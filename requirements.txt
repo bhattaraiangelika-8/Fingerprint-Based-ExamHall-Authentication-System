@@ -1,0 +1,12 @@
+django>=4.2,<5.0
+djangorestframework>=3.14
+psycopg2-binary>=2.9
+opencv-python>=4.8
+numpy>=1.24
+scikit-image>=0.21
+fingerprint-enhancer>=0.2
+Pillow>=10.0
+pycryptodome>=3.19
+python-dotenv>=1.0
+pytest>=7.4
+pytest-django>=4.5

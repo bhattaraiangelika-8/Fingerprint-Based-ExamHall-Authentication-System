@@ -87,26 +87,49 @@ Uses SIFT, ORB, BFMatcher, and FLANN algorithms for cross-device fingerprint mat
 ## Project Structure
 
 ```
-fingerprint_project/
-├── fingerprint/            # Django app
-│   ├── models.py           # Student, MedicalForm
-│   ├── views.py            # API endpoints
-│   ├── urls.py             # Routing
-│   ├── serializers.py      # DRF serializers
-│   ├── preprocessing/      # Image processing pipeline
-│   │   ├── validator.py
-│   │   ├── region_detector.py
-│   │   ├── normalizer.py
-│   │   ├── ridge_enhancer.py
-│   │   ├── noise_reducer.py
-│   │   ├── orientation.py
-│   │   ├── quality.py
-│   │   └── pipeline.py
-│   ├── templates_engine/   # Biometric template handling
-│   │   ├── extractor.py
-│   │   ├── encryption.py
-│   │   └── matcher.py
-│   └── utils/
-│       └── logger.py
-└── fingerprint_project/    # Django settings
+F:\FingerPrint_sensor\
+├── .env                          # Environment variables (PostgreSQL, encryption key)
+├── .env.example                  # Example environment variables template
+├── .gitignore                    # Git ignore rules
+├── esp32_as608\                  # ESP32 Arduino sketch for AS608/R503/R307 sensor
+│   └── esp32_as608.ino           # Sensor communication firmware
+├── fingerprint_project\          # Django project root
+│   ├── fingerprint\              # Main Django app
+│   │   ├── models.py             # Student, MedicalForm models
+│   │   ├── views.py              # API endpoints
+│   │   ├── urls.py               # API routing
+│   │   ├── serializers.py        # DRF serializers
+│   │   ├── admin.py              # Django admin configuration
+│   │   ├── apps.py               # App configuration
+│   │   ├── tests.py              # Test cases
+│   │   ├── migrations\           # Database migrations
+│   │   ├── preprocessing\        # Image processing pipeline (6 modules)
+│   │   │   ├── validator.py      # Format/size/resolution validation
+│   │   │   ├── region_detector.py# HSV skin detection + contour crop
+│   │   │   ├── normalizer.py     # 512×512 resize + CLAHE
+│   │   │   ├── ridge_enhancer.py # Gabor filter bank (8 orientations)
+│   │   │   ├── noise_reducer.py  # Median + Gaussian + morphological ops
+│   │   │   ├── orientation.py    # Gradient-based rotation correction
+│   │   │   ├── quality.py        # Blur/contrast/edge scoring
+│   │   │   └── pipeline.py       # Camera & sensor orchestrators
+│   │   ├── templates_engine\     # Biometric template handling (3 modules)
+│   │   │   ├── extractor.py      # Minutiae detection + binary serialization
+│   │   │   ├── encryption.py     # AES-256-CBC encryption
+│   │   │   └── matcher.py        # SIFT + ORB + FLANN matching
+│   │   ├── utils\
+│   │   │   └── logger.py         # Logging utilities
+│   │   ├── static\               # Static files
+│   │   └── templates\            # Django templates
+│   ├── fingerprint_project\      # Django project settings
+│   │   ├── settings.py           # Settings (PostgreSQL + DRF config)
+│   │   ├── urls.py               # Root URL configuration
+│   │   ├── asgi.py               # ASGI entry point
+│   │   └── wsgi.py               # WSGI entry point
+│   ├── manage.py                 # Django management script
+│   └── fingerprint.log           # Application log file
+├── tests\                        # Test directory
+├── sample_data\                  # Sample fingerprint data
+├── requirements.txt              # Python dependencies
+├── README.md                     # This file
+└── walkthrough.md                # Detailed implementation walkthrough
 ```

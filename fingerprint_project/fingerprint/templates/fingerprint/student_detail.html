@@ -1,0 +1,155 @@
+{% extends "fingerprint/base.html" %}
+{% load static %}
+
+{% block title %}{{ student.full_name }} — Student Detail{% endblock %}
+{% block nav_home %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+        <div>
+            <h1>{{ student.full_name }}</h1>
+            <p>{{ student.registration_no }}</p>
+        </div>
+        <a href="{% url 'fingerprint:home' %}" class="btn btn-outline">Back to Dashboard</a>
+    </div>
+</div>
+
+<div class="card" style="margin-bottom:24px;">
+    <div class="card-header">Student Information</div>
+    <div class="card-body">
+        <div class="detail-grid">
+            <div class="detail-item">
+                <div class="label">Student ID</div>
+                <div class="value">{{ student.student_id }}</div>
+            </div>
+            <div class="detail-item">
+                <div class="label">Registration Number</div>
+                <div class="value">{{ student.registration_no }}</div>
+            </div>
+            <div class="detail-item">
+                <div class="label">Full Name</div>
+                <div class="value">{{ student.full_name }}</div>
+            </div>
+            <div class="detail-item">
+                <div class="label">Date of Birth</div>
+                <div class="value">{{ student.date_of_birth|default:"—" }}</div>
+            </div>
+            <div class="detail-item">
+                <div class="label">Gender</div>
+                <div class="value">{{ student.gender|default:"—" }}</div>
+            </div>
+            <div class="detail-item">
+                <div class="label">College</div>
+                <div class="value">{{ student.college_name|default:"—" }}</div>
+            </div>
+            <div class="detail-item">
+                <div class="label">Email</div>
+                <div class="value">{{ student.email|default:"—" }}</div>
+            </div>
+            <div class="detail-item">
+                <div class="label">Phone</div>
+                <div class="value">{{ student.phone|default:"—" }}</div>
+            </div>
+            <div class="detail-item">
+                <div class="label">Fingerprint Status</div>
+                <div class="value">
+                    {% if student.has_fingerprint %}
+                        <span class="badge badge-success">Enrolled</span>
+                    {% else %}
+                        <span class="badge badge-warning">Not Enrolled</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="detail-item">
+                <div class="label">Consent Signed</div>
+                <div class="value">
+                    {% if student.consent_signed %}
+                        <span class="badge badge-success">Yes</span>
+                    {% else %}
+                        <span class="badge badge-danger">No</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="detail-item">
+                <div class="label">Created</div>
+                <div class="value">{{ student.created_at|date:"M d, Y H:i" }}</div>
+            </div>
+            <div class="detail-item">
+                <div class="label">Last Updated</div>
+                <div class="value">{{ student.updated_at|date:"M d, Y H:i" }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card" style="margin-bottom:24px;">
+    <div class="card-header">Actions</div>
+    <div class="card-body">
+        <div class="btn-group">
+            {% if not student.has_fingerprint %}
+                <a href="{% url 'fingerprint:fingerprint_upload' student.student_id %}" class="btn btn-primary">Enroll Fingerprint</a>
+            {% else %}
+                <a href="{% url 'fingerprint:fingerprint_upload' student.student_id %}" class="btn btn-outline">Re-enroll Fingerprint</a>
+            {% endif %}
+            <a href="{% url 'fingerprint:medical_upload' student.student_id %}" class="btn btn-success">Upload Medical Form</a>
+            <button class="btn btn-danger" onclick="deleteStudent({{ student.student_id }}, '{{ student.full_name }}')">Delete Student</button>
+        </div>
+    </div>
+</div>
+
+{% if medical_forms %}
+<div class="card">
+    <div class="card-header">Medical Forms</div>
+    <div class="card-body">
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Form ID</th>
+                        <th>Uploaded</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for form in medical_forms %}
+                    <tr>
+                        <td>#{{ form.form_id }}</td>
+                        <td>{{ form.uploaded_at|date:"M d, Y H:i" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function deleteStudent(id, name) {
+    if (!confirm('Are you sure you want to delete "' + name + '"? This action cannot be undone.')) return;
+
+    fetch('/api/students/' + id + '/', {
+        method: 'DELETE',
+        headers: { 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value || getCookie('csrftoken') }
+    })
+    .then(response => {
+        if (response.ok) {
+            showToast('Student deleted successfully', 'success');
+            setTimeout(() => { window.location.href = "{% url 'fingerprint:home' %}"; }, 1000);
+        } else {
+            showToast('Failed to delete student', 'error');
+        }
+    })
+    .catch(err => showToast('Error: ' + err.message, 'error'));
+}
+
+function getCookie(name) {
+    const value = '; ' + document.cookie;
+    const parts = value.split('; ' + name + '=');
+    if (parts.length === 2) return parts.pop().split(';').shift();
+    return '';
+}
+</script>
+{% endblock %}

@@ -1,0 +1,94 @@
+{% extends "fingerprint/base.html" %}
+{% load static %}
+
+{% block title %}Fingerprint Enrollment — Step 2{% endblock %}
+{% block nav_enroll %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Fingerprint Enrollment</h1>
+    <p>Upload a fingerprint image for <strong>{{ student.full_name }}</strong> ({{ student.registration_no }})</p>
+</div>
+
+<div class="stepper">
+    <div class="step completed">
+        <div class="step-number">&#10003;</div>
+        <span>Student Info</span>
+    </div>
+    <div class="step-connector completed"></div>
+    <div class="step active">
+        <div class="step-number">2</div>
+        <span>Fingerprint</span>
+    </div>
+    <div class="step-connector"></div>
+    <div class="step">
+        <div class="step-number">3</div>
+        <span>Medical Form</span>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">Fingerprint Image</div>
+    <div class="card-body">
+        <form id="fingerprint-form" enctype="multipart/form-data">
+            {% csrf_token %}
+            <input type="hidden" name="student_id" value="{{ student.student_id }}">
+
+            <div class="form-group">
+                <label for="finger_type">Finger Type</label>
+                <select class="form-control" id="finger_type" name="finger_type">
+                    <option value="right_index">Right Index (default)</option>
+                    <option value="right_thumb">Right Thumb</option>
+                    <option value="right_middle">Right Middle</option>
+                    <option value="right_ring">Right Ring</option>
+                    <option value="right_pinky">Right Pinky</option>
+                    <option value="left_thumb">Left Thumb</option>
+                    <option value="left_index">Left Index</option>
+                    <option value="left_middle">Left Middle</option>
+                    <option value="left_ring">Left Ring</option>
+                    <option value="left_pinky">Left Pinky</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="fingerprint_image">Fingerprint Image <span class="required">*</span></label>
+                <div class="image-preview" id="image-preview">
+                    <div class="placeholder">
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <rect x="3" y="3" width="18" height="18" rx="2"/>
+                            <circle cx="8.5" cy="8.5" r="1.5"/>
+                            <path d="M21 15l-5-5L5 21"/>
+                        </svg>
+                        <div>Select an image to preview</div>
+                    </div>
+                </div>
+                <input type="file" class="form-control" id="fingerprint_image" name="fingerprint_image" accept="image/*" required>
+                <div class="form-hint">Camera-captured photo of the fingerprint. JPEG or PNG, min 800x800px.</div>
+            </div>
+
+            <div class="btn-group">
+                <button type="submit" class="btn btn-primary btn-lg" id="submit-btn">
+                    <span class="btn-text">Enroll Fingerprint</span>
+                    <span class="spinner spinner-light" style="display:none"></span>
+                </button>
+                <a href="{% url 'fingerprint:home' %}" class="btn btn-outline btn-lg">Skip & Finish</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="result-card" class="card" style="display:none; margin-top:24px;">
+    <div class="card-header">Enrollment Result</div>
+    <div class="card-body">
+        <div id="result-content"></div>
+        <div class="btn-group" style="margin-top:16px;">
+            <a href="{% url 'fingerprint:medical_upload' student.student_id %}" class="btn btn-success btn-lg" id="continue-btn">Continue to Medical Form</a>
+            <a href="{% url 'fingerprint:home' %}" class="btn btn-outline btn-lg">Back to Dashboard</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'fingerprint/js/fingerprint.js' %}"></script>
+{% endblock %}

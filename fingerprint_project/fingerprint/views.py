@@ -21,13 +21,12 @@ from .serializers import (
     StudentSerializer,
     StudentCreateSerializer,
     FingerprintUploadSerializer,
-    SensorCaptureSerializer,
     MatchRequestSerializer,
     MedicalFormUploadSerializer,
 )
 from .preprocessing.validator import validate_image, ValidationError
 from .preprocessing.pipeline import preprocess_camera_image, preprocess_sensor_image
-from .templates_engine.extractor import extract_template
+from .templates_engine.extractor import extract_template, FingerprintTemplate
 from .templates_engine.encryption import encrypt_template, decrypt_template
 from .templates_engine.matcher import match_fingerprints, match_multi_template
 
@@ -141,74 +140,116 @@ def sensor_capture(request):
     """
     POST /api/fingerprint/sensor-capture/
 
-    Receives fingerprint image from an ESP32 module connected to
-    an R503/R307 sensor. Accepts either a file upload or base64
-    encoded image data.
+    Receives raw fingerprint image from an ESP32 module connected to
+    an AS608/R503/R307 sensor. Extracts the template and matches
+    against all enrolled fingerprints. Returns student info on match.
+
+    Request body: raw binary image data (application/octet-stream)
     """
-    serializer = SensorCaptureSerializer(data=request.data)
-    if not serializer.is_valid():
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    # ── Read raw binary from ESP32 ──
+    image_bytes = request.body
 
-    student_id = serializer.validated_data['student_id']
-    finger_type = serializer.validated_data['finger_type']
-
-    # ── Get image data ──
-    if serializer.validated_data.get('fingerprint_image'):
-        image_file = serializer.validated_data['fingerprint_image']
-        pil_image = Image.open(image_file)
-    elif serializer.validated_data.get('fingerprint_base64'):
-        try:
-            b64_data = serializer.validated_data['fingerprint_base64']
-            image_bytes = base64.b64decode(b64_data)
-            pil_image = Image.open(io.BytesIO(image_bytes))
-        except Exception as e:
-            return Response(
-                {'error': f'Invalid base64 image data: {e}'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-    else:
+    if not image_bytes or len(image_bytes) < 100:
         return Response(
-            {'error': 'No image data provided'},
+            {'error': 'No image data received or data too small'},
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # ── Verify student exists ──
+    # ── Open as image ──
     try:
-        student = Student.objects.get(student_id=student_id)
-    except Student.DoesNotExist:
+        pil_image = Image.open(io.BytesIO(image_bytes))
+    except Exception as e:
         return Response(
-            {'error': f'Student with id {student_id} not found'},
-            status=status.HTTP_404_NOT_FOUND
+            {'error': f'Invalid image data: {e}'},
+            status=status.HTTP_400_BAD_REQUEST
         )
 
     # ── Preprocess sensor image (lighter pipeline) ──
     img_array = np.array(pil_image.convert('L'))  # Grayscale
     result = preprocess_sensor_image(img_array)
 
-    # ── Extract template ──
+    # ── Extract template from probe image ──
     template = extract_template(result.processed_image)
 
-    # ── Encrypt and store ──
-    template_bytes = template.serialize()
-    encrypted = encrypt_template(template_bytes)
-    template_hash = template.compute_hash()
+    if template.count < 5:
+        return Response({
+            'validated': False,
+            'error': 'Poor fingerprint quality — too few minutiae detected',
+            'minutiae_count': template.count,
+        }, status=status.HTTP_400_BAD_REQUEST)
 
-    student.fingerprint_template = encrypted
-    student.fingerprint_hash = template_hash
-    student.save()
+    # ── Match against all enrolled fingerprints ──
+    match_result, matched_student_id = _match_against_enrolled(result.processed_image)
+
+    is_validated = match_result.is_match if match_result else False
+
+    response_data = {
+        'validated': is_validated,
+        'score': round(match_result.score, 2) if match_result else 0,
+        'interpretation': match_result.interpretation if match_result else 'NO_MATCH',
+        'minutiae_extracted': template.count,
+    }
+
+    if is_validated and matched_student_id:
+        try:
+            student = Student.objects.get(student_id=matched_student_id)
+            response_data['student_id'] = student.student_id
+            response_data['registration_no'] = student.registration_no
+            response_data['full_name'] = student.full_name
+        except Student.DoesNotExist:
+            response_data['validated'] = False
 
     logger.info(
-        "Sensor fingerprint enrolled: student_id=%s, finger=%s, minutiae=%d",
-        student_id, finger_type, template.count,
+        "Sensor verification: validated=%s, score=%.2f, student_id=%s",
+        is_validated,
+        match_result.score if match_result else 0,
+        matched_student_id,
     )
 
-    return Response({
-        'message': 'Sensor fingerprint enrolled successfully',
-        'student_id': student_id,
-        'finger_type': finger_type,
-        'minutiae_count': template.count,
-        'quality': result.quality_result.to_dict(),
-    }, status=status.HTTP_201_CREATED)
+    return Response(response_data)
+
+
+def _match_against_enrolled(probe_image):
+    """
+    Match a probe fingerprint image against all enrolled templates.
+
+    Returns:
+        tuple[MatchResult | None, int | None]: (best match result, matched student_id)
+    """
+    students = Student.objects.exclude(
+        fingerprint_template=b''
+    ).exclude(
+        fingerprint_template__isnull=True
+    )
+
+    if not students.exists():
+        return None, None
+
+    best_score = 0
+    best_student_id = None
+    best_result = None
+
+    for student in students:
+        if not student.fingerprint_template:
+            continue
+
+        try:
+            decrypted_bytes = decrypt_template(bytes(student.fingerprint_template))
+            stored_template = FingerprintTemplate.deserialize(decrypted_bytes)
+            stored_image = _template_to_image(stored_template)
+
+            result = match_fingerprints(probe_image, stored_image, method='combined')
+
+            if result.score > best_score:
+                best_score = result.score
+                best_student_id = student.student_id
+                best_result = result
+
+        except Exception as e:
+            logger.warning("Error matching student %s: %s", student.student_id, e)
+            continue
+
+    return best_result, best_student_id
 
 
 # ──────────────────────────────────────────────
@@ -278,7 +319,6 @@ def fingerprint_match(request):
         try:
             # Decrypt stored template
             decrypted_bytes = decrypt_template(bytes(student.fingerprint_template))
-            from .templates_engine.extractor import FingerprintTemplate
             stored_template = FingerprintTemplate.deserialize(decrypted_bytes)
 
             # We need to reconstruct an image-like representation for matching
@@ -446,3 +486,98 @@ def medical_form_upload(request):
         'form_id': medical_form.form_id,
         'student_id': student_id,
     }, status=status.HTTP_201_CREATED)
+
+
+# ──────────────────────────────────────────────
+# Template Views (Frontend Pages)
+# ──────────────────────────────────────────────
+
+from django.shortcuts import render, get_object_or_404
+
+
+def home_view(request):
+    """Dashboard — list all students with stats."""
+    students = Student.objects.all()
+    enrolled_count = students.exclude(
+        fingerprint_template=b''
+    ).exclude(
+        fingerprint_template__isnull=True
+    ).count()
+    pending_count = students.count() - enrolled_count
+
+    students_data = []
+    for s in students:
+        has_fp = bool(s.fingerprint_template)
+        students_data.append({
+            'student_id': s.student_id,
+            'registration_no': s.registration_no,
+            'full_name': s.full_name,
+            'college_name': s.college_name,
+            'email': s.email,
+            'phone': s.phone,
+            'has_fingerprint': has_fp,
+            'created_at': s.created_at,
+        })
+
+    return render(request, 'fingerprint/dashboard.html', {
+        'students': students_data,
+        'enrolled_count': enrolled_count,
+        'pending_count': pending_count,
+    })
+
+
+def enroll_view(request):
+    """Student registration form (Step 1)."""
+    return render(request, 'fingerprint/enroll.html')
+
+
+def fingerprint_upload_view(request, student_id):
+    """Fingerprint upload page (Step 2)."""
+    student = get_object_or_404(Student, student_id=student_id)
+    return render(request, 'fingerprint/fingerprint.html', {
+        'student': student,
+    })
+
+
+def medical_upload_view(request, student_id):
+    """Medical form upload page (Step 3)."""
+    student = get_object_or_404(Student, student_id=student_id)
+    return render(request, 'fingerprint/medical.html', {
+        'student': student,
+    })
+
+
+def verify_view(request):
+    """Fingerprint verification page."""
+    students = Student.objects.exclude(
+        fingerprint_template=b''
+    ).exclude(
+        fingerprint_template__isnull=True
+    )
+    return render(request, 'fingerprint/verify.html', {
+        'students': students,
+    })
+
+
+def student_detail_view(request, student_id):
+    """Student detail page."""
+    student = get_object_or_404(Student, student_id=student_id)
+    medical_forms = MedicalForm.objects.filter(student=student)
+
+    return render(request, 'fingerprint/student_detail.html', {
+        'student': {
+            'student_id': student.student_id,
+            'registration_no': student.registration_no,
+            'full_name': student.full_name,
+            'date_of_birth': student.date_of_birth,
+            'gender': student.gender,
+            'college_name': student.college_name,
+            'email': student.email,
+            'phone': student.phone,
+            'consent_signed': student.consent_signed,
+            'has_fingerprint': bool(student.fingerprint_template),
+            'created_at': student.created_at,
+            'updated_at': student.updated_at,
+        },
+        'medical_forms': medical_forms,
+    })

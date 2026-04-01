@@ -1,0 +1,100 @@
+{% extends "fingerprint/base.html" %}
+{% load static %}
+
+{% block title %}Medical Form Upload — Step 3{% endblock %}
+{% block nav_enroll %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Medical Form Upload</h1>
+    <p>Upload a medical form PDF for <strong>{{ student.full_name }}</strong> ({{ student.registration_no }})</p>
+</div>
+
+<div class="stepper">
+    <div class="step completed">
+        <div class="step-number">&#10003;</div>
+        <span>Student Info</span>
+    </div>
+    <div class="step-connector completed"></div>
+    <div class="step completed">
+        <div class="step-number">&#10003;</div>
+        <span>Fingerprint</span>
+    </div>
+    <div class="step-connector completed"></div>
+    <div class="step active">
+        <div class="step-number">3</div>
+        <span>Medical Form</span>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">Medical Form PDF</div>
+    <div class="card-body">
+        <form id="medical-form" enctype="multipart/form-data">
+            {% csrf_token %}
+            <input type="hidden" name="student_id" value="{{ student.student_id }}">
+
+            <div class="form-group">
+                <label for="form_pdf">Medical Form PDF <span class="required">*</span></label>
+                <input type="file" class="form-control" id="form_pdf" name="form_pdf" accept=".pdf" required>
+                <div class="form-hint">PDF file only. Max 10MB.</div>
+            </div>
+
+            <div class="btn-group">
+                <button type="submit" class="btn btn-primary btn-lg" id="submit-btn">
+                    <span class="btn-text">Upload Medical Form</span>
+                    <span class="spinner spinner-light" style="display:none"></span>
+                </button>
+                <a href="{% url 'fingerprint:home' %}" class="btn btn-outline btn-lg">Skip & Finish</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('medical-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const btn = document.getElementById('submit-btn');
+    const btnText = btn.querySelector('.btn-text');
+    const spinner = btn.querySelector('.spinner');
+    btn.disabled = true;
+    btnText.textContent = 'Uploading...';
+    spinner.style.display = 'inline-block';
+
+    const formData = new FormData(this);
+
+    try {
+        const response = await fetch('/api/medical-forms/', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+            }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            showToast('Medical form uploaded successfully!', 'success');
+            setTimeout(() => {
+                window.location.href = "{% url 'fingerprint:home' %}";
+            }, 1500);
+        } else {
+            const errorMsg = data.error || data.form_pdf?.[0] || data.student_id?.[0] || JSON.stringify(data);
+            showToast('Error: ' + errorMsg, 'error');
+            btn.disabled = false;
+            btnText.textContent = 'Upload Medical Form';
+            spinner.style.display = 'none';
+        }
+    } catch (err) {
+        showToast('Network error: ' + err.message, 'error');
+        btn.disabled = false;
+        btnText.textContent = 'Upload Medical Form';
+        spinner.style.display = 'none';
+    }
+});
+</script>
+{% endblock %}

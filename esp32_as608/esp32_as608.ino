@@ -127,18 +127,26 @@ bool sendImageToServer() {
     }
 
     HTTPClient http;
-    String url = "http://" + serverIP + ":" + String(SERVER_PORT) + "/upload";
+    String url = "http://" + serverIP + ":" + String(SERVER_PORT) + "/api/fingerprint/sensor-capture/";
     http.begin(url);
     http.addHeader("Content-Type", "application/octet-stream");
 
     int code = http.POST(imageBuffer, IMAGE_SIZE);
-    http.end();
 
     if (code == 200) {
-        Serial.println("Image uploaded successfully.");
+        String payload = http.getString();
+        Serial.println("=== Verification Result ===");
+        Serial.println(payload);
+        Serial.println("===========================");
+        http.end();
         return true;
     } else {
-        Serial.printf("Upload failed, HTTP code: %d\n", code);
+        Serial.printf("Request failed, HTTP code: %d\n", code);
+        if (code > 0) {
+            String payload = http.getString();
+            Serial.println(payload);
+        }
+        http.end();
         return false;
     }
 }

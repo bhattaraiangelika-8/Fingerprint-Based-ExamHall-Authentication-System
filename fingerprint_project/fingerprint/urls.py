@@ -23,4 +23,12 @@ urlpatterns = [
 
     # Medical forms
     path('medical-forms/', views.medical_form_upload, name='medical-form-upload'),
+
+    # Frontend pages
+    path('', views.home_view, name='home'),
+    path('enroll/', views.enroll_view, name='enroll'),
+    path('enroll/<int:student_id>/fingerprint/', views.fingerprint_upload_view, name='fingerprint_upload'),
+    path('enroll/<int:student_id>/medical/', views.medical_upload_view, name='medical_upload'),
+    path('verify/', views.verify_view, name='verify'),
+    path('student/<int:student_id>/', views.student_detail_view, name='student_detail'),
 ]

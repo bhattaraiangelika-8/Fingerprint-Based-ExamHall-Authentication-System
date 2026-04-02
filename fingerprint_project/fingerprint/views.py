@@ -6,11 +6,16 @@ matching, student CRUD, and health check.
 """
 
 import io
+import os
 import base64
 import logging
+from datetime import datetime
+from pathlib import Path
+
 import numpy as np
 from PIL import Image
 
+from django.views.generic import TemplateView
 from rest_framework import status, generics
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -25,12 +30,38 @@ from .serializers import (
     MedicalFormUploadSerializer,
 )
 from .preprocessing.validator import validate_image, ValidationError
-from .preprocessing.pipeline import preprocess_camera_image, preprocess_sensor_image
-from .templates_engine.extractor import extract_template, FingerprintTemplate
-from .templates_engine.encryption import encrypt_template, decrypt_template
-from .templates_engine.matcher import match_fingerprints, match_multi_template
+from .preprocessing.pipeline import preprocess_camera_image
+from .templates_engine.extractor import extract_template
+from .templates_engine.encryption import encrypt_template
+from .templates_engine.matcher import match_fingerprints
 
 logger = logging.getLogger('fingerprint')
+
+# Directory for saving captured fingerprint images for visual inspection
+CAPTURE_DIR = Path(__file__).resolve().parent.parent / 'captured_fingerprints'
+CAPTURE_DIR.mkdir(exist_ok=True)
+
+
+def _save_fingerprint_image(image_array, prefix, student_id=None, mode='L'):
+    """
+    Save a fingerprint image as PNG for visual inspection.
+
+    Args:
+        image_array: numpy array (grayscale or RGB)
+        prefix: 'sensor_raw', 'sensor_processed', 'enrolled', 'enrolled_original'
+        student_id: optional student ID for filename
+        mode: 'L' for grayscale, 'RGB' for color
+    """
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+    student_part = f"_student{student_id}" if student_id else ""
+    filename = f"{prefix}{student_part}_{timestamp}.png"
+    filepath = CAPTURE_DIR / filename
+
+    img = Image.fromarray(image_array, mode=mode)
+    img.save(str(filepath))
+
+    logger.info("Saved %s fingerprint image to %s", prefix, filepath)
+    return str(filepath)
 
 
 # ──────────────────────────────────────────────
@@ -85,9 +116,16 @@ def fingerprint_upload(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # ── Preprocess ──
+    # Save original uploaded camera photo for visual inspection
+    img_array_gray = np.array(pil_image.convert('L'))
+    _save_fingerprint_image(img_array_gray, 'enrolled_original', student_id)
+
+    # ── Preprocess with camera pipeline (aggressive normalization) ──
     img_array = np.array(pil_image.convert('RGB'))
     result = preprocess_camera_image(img_array)
+
+    # Save preprocessed enrolled image for visual inspection
+    _save_fingerprint_image(result.processed_image, 'enrolled', student_id)
 
     # ── Quality check ──
     if not result.quality_result.is_acceptable:
@@ -110,9 +148,13 @@ def fingerprint_upload(request):
     encrypted = encrypt_template(template_bytes)
     template_hash = template.compute_hash()
 
+    # Store processed image for matching
+    processed_image_bytes = result.processed_image.tobytes()
+
     # Update student's fingerprint data
     student.fingerprint_template = encrypted
     student.fingerprint_hash = template_hash
+    student.fingerprint_image = processed_image_bytes
     student.save()
 
     logger.info(
@@ -145,6 +187,8 @@ def sensor_capture(request):
     against all enrolled fingerprints. Returns student info on match.
 
     Request body: raw binary image data (application/octet-stream)
+    The AS608 sensor outputs 256×288 images at 4 bits per pixel,
+    packed as 2 pixels per byte (high nibble first), totalling 36864 bytes.
     """
     # ── Read raw binary from ESP32 ──
     image_bytes = request.body
@@ -155,18 +199,25 @@ def sensor_capture(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # ── Open as image ──
+    # ── Convert to PIL Image ──
     try:
-        pil_image = Image.open(io.BytesIO(image_bytes))
+        pil_image = _parse_sensor_image(image_bytes)
     except Exception as e:
         return Response(
             {'error': f'Invalid image data: {e}'},
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # ── Preprocess sensor image (lighter pipeline) ──
-    img_array = np.array(pil_image.convert('L'))  # Grayscale
-    result = preprocess_sensor_image(img_array)
+    # Save raw sensor capture for visual inspection
+    img_array_raw = np.array(pil_image.convert('L'))
+    _save_fingerprint_image(img_array_raw, 'sensor_raw')
+
+    # ── Preprocess sensor image (full camera pipeline for better matching) ──
+    img_array = np.array(pil_image.convert('RGB'))  # Convert to RGB for camera pipeline
+    result = preprocess_camera_image(img_array)
+
+    # Save preprocessed sensor image for visual inspection
+    _save_fingerprint_image(result.processed_image, 'sensor_processed')
 
     # ── Extract template from probe image ──
     template = extract_template(result.processed_image)
@@ -220,6 +271,8 @@ def _match_against_enrolled(probe_image):
         fingerprint_template=b''
     ).exclude(
         fingerprint_template__isnull=True
+    ).exclude(
+        fingerprint_image__isnull=True
     )
 
     if not students.exists():
@@ -230,13 +283,14 @@ def _match_against_enrolled(probe_image):
     best_result = None
 
     for student in students:
-        if not student.fingerprint_template:
+        if not student.fingerprint_template or not student.fingerprint_image:
             continue
 
         try:
-            decrypted_bytes = decrypt_template(bytes(student.fingerprint_template))
-            stored_template = FingerprintTemplate.deserialize(decrypted_bytes)
-            stored_image = _template_to_image(stored_template)
+            # Use stored preprocessed image directly for matching
+            stored_image = np.frombuffer(
+                bytes(student.fingerprint_image), dtype=np.uint8
+            ).reshape((512, 512))
 
             result = match_fingerprints(probe_image, stored_image, method='combined')
 
@@ -250,6 +304,41 @@ def _match_against_enrolled(probe_image):
             continue
 
     return best_result, best_student_id
+
+
+def _parse_sensor_image(image_bytes):
+    """
+    Parse raw fingerprint sensor data into a PIL Image.
+
+    The AS608/R503/R307 sensors output a 256×288 image at 4 bits per pixel,
+    packed as 2 pixels per byte (high nibble = first pixel, low nibble = second).
+    Total size: 256 * 288 / 2 = 36864 bytes.
+
+    Each 4-bit value (0–15) is scaled to 8-bit (0–255) by multiplying by 17.
+
+    Falls back to PIL's Image.open() for standard image formats (e.g. BMP/PNG).
+    """
+    AS608_IMAGE_WIDTH  = 256
+    AS608_IMAGE_HEIGHT = 288
+    AS608_RAW_SIZE     = AS608_IMAGE_WIDTH * AS608_IMAGE_HEIGHT // 2  # 36864
+
+    if len(image_bytes) == AS608_RAW_SIZE:
+        # Unpack 4-bit-per-pixel raw sensor data
+        raw = np.frombuffer(image_bytes, dtype=np.uint8)
+        # High nibble → first pixel, low nibble → second pixel
+        high = (raw >> 4) & 0x0F
+        low  = raw & 0x0F
+        # Interleave: [h0, l0, h1, l1, ...]
+        pixels = np.empty(AS608_IMAGE_WIDTH * AS608_IMAGE_HEIGHT, dtype=np.uint8)
+        pixels[0::2] = high
+        pixels[1::2] = low
+        # Scale 4-bit (0–15) to 8-bit (0–255)
+        pixels = (pixels * 17).astype(np.uint8)
+        img_array = pixels.reshape((AS608_IMAGE_HEIGHT, AS608_IMAGE_WIDTH))
+        return Image.fromarray(img_array, mode='L')
+    else:
+        # Fallback: try to open as a standard image format
+        return Image.open(io.BytesIO(image_bytes))
 
 
 # ──────────────────────────────────────────────
@@ -289,8 +378,8 @@ def fingerprint_match(request):
         )
 
     # ── Preprocess probe image ──
-    img_array = np.array(pil_image.convert('L'))
-    result = preprocess_sensor_image(img_array)
+    img_array = np.array(pil_image.convert('RGB'))
+    result = preprocess_camera_image(img_array)
     probe_image = result.processed_image
 
     # ── Get stored templates ──
@@ -299,7 +388,7 @@ def fingerprint_match(request):
     if specific_student_id:
         students = Student.objects.filter(student_id=specific_student_id)
     else:
-        students = Student.objects.exclude(fingerprint_template=b'')
+        students = Student.objects.exclude(fingerprint_template=b'').exclude(fingerprint_image__isnull=True)
 
     if not students.exists():
         return Response({
@@ -307,23 +396,20 @@ def fingerprint_match(request):
             'error': 'No enrolled fingerprints found',
         }, status=status.HTTP_404_NOT_FOUND)
 
-    # ── Match against stored templates ──
+    # ── Match against stored images ──
     best_score = 0
     best_student = None
     best_method = 'combined'
 
     for student in students:
-        if not student.fingerprint_template:
+        if not student.fingerprint_template or not student.fingerprint_image:
             continue
 
         try:
-            # Decrypt stored template
-            decrypted_bytes = decrypt_template(bytes(student.fingerprint_template))
-            stored_template = FingerprintTemplate.deserialize(decrypted_bytes)
-
-            # We need to reconstruct an image-like representation for matching
-            # Create a synthetic image from minutiae for feature matching
-            stored_image = _template_to_image(stored_template)
+            # Use stored preprocessed image directly for matching
+            stored_image = np.frombuffer(
+                bytes(student.fingerprint_image), dtype=np.uint8
+            ).reshape((512, 512))
 
             match_result = match_fingerprints(probe_image, stored_image, method='combined')
 
@@ -360,35 +446,6 @@ def fingerprint_match(request):
     )
 
     return Response(response_data)
-
-
-def _template_to_image(template, size=(512, 512)):
-    """
-    Create a synthetic grayscale image from a fingerprint template's
-    minutiae points for feature-based matching.
-    """
-    image = np.zeros(size, dtype=np.uint8)
-
-    for m in template.minutiae:
-        x = min(m.x, size[1] - 1)
-        y = min(m.y, size[0] - 1)
-
-        # Draw minutiae as circles with orientation lines
-        import cv2
-        if m.type == 1:  # Ridge ending
-            cv2.circle(image, (x, y), 3, 200, -1)
-        else:  # Bifurcation
-            cv2.circle(image, (x, y), 4, 255, -1)
-
-        # Draw orientation
-        length = 8
-        end_x = int(x + length * np.cos(m.angle))
-        end_y = int(y + length * np.sin(m.angle))
-        end_x = max(0, min(end_x, size[1] - 1))
-        end_y = max(0, min(end_y, size[0] - 1))
-        cv2.line(image, (x, y), (end_x, end_y), 180, 1)
-
-    return image
 
 
 def _get_interpretation(score):
@@ -486,98 +543,3 @@ def medical_form_upload(request):
         'form_id': medical_form.form_id,
         'student_id': student_id,
     }, status=status.HTTP_201_CREATED)
-
-
-# ──────────────────────────────────────────────
-# Template Views (Frontend Pages)
-# ──────────────────────────────────────────────
-
-from django.shortcuts import render, get_object_or_404
-
-
-def home_view(request):
-    """Dashboard — list all students with stats."""
-    students = Student.objects.all()
-    enrolled_count = students.exclude(
-        fingerprint_template=b''
-    ).exclude(
-        fingerprint_template__isnull=True
-    ).count()
-    pending_count = students.count() - enrolled_count
-
-    students_data = []
-    for s in students:
-        has_fp = bool(s.fingerprint_template)
-        students_data.append({
-            'student_id': s.student_id,
-            'registration_no': s.registration_no,
-            'full_name': s.full_name,
-            'college_name': s.college_name,
-            'email': s.email,
-            'phone': s.phone,
-            'has_fingerprint': has_fp,
-            'created_at': s.created_at,
-        })
-
-    return render(request, 'fingerprint/dashboard.html', {
-        'students': students_data,
-        'enrolled_count': enrolled_count,
-        'pending_count': pending_count,
-    })
-
-
-def enroll_view(request):
-    """Student registration form (Step 1)."""
-    return render(request, 'fingerprint/enroll.html')
-
-
-def fingerprint_upload_view(request, student_id):
-    """Fingerprint upload page (Step 2)."""
-    student = get_object_or_404(Student, student_id=student_id)
-    return render(request, 'fingerprint/fingerprint.html', {
-        'student': student,
-    })
-
-
-def medical_upload_view(request, student_id):
-    """Medical form upload page (Step 3)."""
-    student = get_object_or_404(Student, student_id=student_id)
-    return render(request, 'fingerprint/medical.html', {
-        'student': student,
-    })
-
-
-def verify_view(request):
-    """Fingerprint verification page."""
-    students = Student.objects.exclude(
-        fingerprint_template=b''
-    ).exclude(
-        fingerprint_template__isnull=True
-    )
-    return render(request, 'fingerprint/verify.html', {
-        'students': students,
-    })
-
-
-def student_detail_view(request, student_id):
-    """Student detail page."""
-    student = get_object_or_404(Student, student_id=student_id)
-    medical_forms = MedicalForm.objects.filter(student=student)
-
-    return render(request, 'fingerprint/student_detail.html', {
-        'student': {
-            'student_id': student.student_id,
-            'registration_no': student.registration_no,
-            'full_name': student.full_name,
-            'date_of_birth': student.date_of_birth,
-            'gender': student.gender,
-            'college_name': student.college_name,
-            'email': student.email,
-            'phone': student.phone,
-            'consent_signed': student.consent_signed,
-            'has_fingerprint': bool(student.fingerprint_template),
-            'created_at': student.created_at,
-            'updated_at': student.updated_at,
-        },
-        'medical_forms': medical_forms,
-    })

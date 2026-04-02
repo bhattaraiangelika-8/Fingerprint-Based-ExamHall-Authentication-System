@@ -25,6 +25,9 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+.opencode
+
+
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -150,3 +153,5 @@ cython_debug/
 
 # PyCharm
 .idea/
+
+fingerprint_project/captured_fingerprints/

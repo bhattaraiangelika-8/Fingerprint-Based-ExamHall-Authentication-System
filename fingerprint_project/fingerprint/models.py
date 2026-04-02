@@ -15,6 +15,7 @@ class Student(models.Model):
     photo = models.BinaryField(null=True, blank=True)
     fingerprint_template = models.BinaryField(max_length=4096)
     fingerprint_hash = models.CharField(max_length=64)
+    fingerprint_image = models.BinaryField(max_length=262144, null=True, blank=True)
     consent_signed = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

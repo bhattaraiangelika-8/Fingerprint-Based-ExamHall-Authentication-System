@@ -45,8 +45,22 @@ python manage.py createsuperuser
 ### 5. Start Server
 
 ```bash
+# For local development only (localhost)
 python manage.py runserver
+
+# For local network access (required for ESP32)
+python manage.py runserver 0.0.0.0:8000
 ```
+
+### 6. Start Frontend
+
+```bash
+cd student-frontend
+npm install
+npm start
+```
+
+Frontend runs on `http://localhost:3000` and connects to the backend on port `8000`.
 
 ## API Endpoints
 

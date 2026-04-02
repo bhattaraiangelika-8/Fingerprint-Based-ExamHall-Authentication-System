@@ -26,7 +26,7 @@ class StudentCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating a student with fingerprint enrollment."""
 
     photo = serializers.ImageField(required=False)
-    fingerprint_image = serializers.ImageField(write_only=True)
+    fingerprint_image = serializers.ImageField(write_only=True, required=False)
 
     class Meta:
         model = Student

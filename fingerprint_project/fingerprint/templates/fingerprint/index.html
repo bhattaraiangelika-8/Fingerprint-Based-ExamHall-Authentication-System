@@ -3,73 +3,65 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Fingerprint-Based Exam Hall Authentication System — student registration and biometric enrollment portal." />
+  <meta name="description" content="Fingerprint-Based Exam Hall Authentication System" />
   <title>BiometriQ — Exam Hall Authentication</title>
   {% load static %}
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{% static 'fingerprint/css/app.css' %}" />
+  <link rel="stylesheet" href="{% static 'fingerprint/css/app.css' %}?v=2.0" />
 </head>
 <body>
 
-<!-- ──────────────────────────────────────────── -->
-<!--  SIDEBAR NAV                                 -->
-<!-- ──────────────────────────────────────────── -->
+<!-- ─── SIDEBAR ─── -->
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-brand">
     <div class="brand-icon">
-      <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="16" cy="16" r="15" stroke="url(#g1)" stroke-width="2"/>
-        <path d="M16 8C11.589 8 8 11.589 8 16" stroke="url(#g1)" stroke-width="1.5" stroke-linecap="round"/>
-        <path d="M16 10.5C12.962 10.5 10.5 12.962 10.5 16" stroke="url(#g1)" stroke-width="1.5" stroke-linecap="round"/>
-        <path d="M16 13C14.343 13 13 14.343 13 16" stroke="url(#g1)" stroke-width="1.5" stroke-linecap="round"/>
-        <path d="M16 8C20.411 8 24 11.589 24 16" stroke="url(#g2)" stroke-width="1.5" stroke-linecap="round"/>
-        <path d="M16 10.5C19.038 10.5 21.5 12.962 21.5 16" stroke="url(#g2)" stroke-width="1.5" stroke-linecap="round"/>
-        <path d="M16 13C17.657 13 19 14.343 19 16" stroke="url(#g2)" stroke-width="1.5" stroke-linecap="round"/>
-        <circle cx="16" cy="16" r="1.5" fill="url(#g1)"/>
-        <defs>
-          <linearGradient id="g1" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-            <stop stop-color="#3b82f6"/>
-            <stop offset="1" stop-color="#06b6d4"/>
-          </linearGradient>
-          <linearGradient id="g2" x1="32" y1="0" x2="0" y2="32" gradientUnits="userSpaceOnUse">
-            <stop stop-color="#06b6d4"/>
-            <stop offset="1" stop-color="#8b5cf6"/>
-          </linearGradient>
-        </defs>
-      </svg>
+      <svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="15" stroke="#0f766e" stroke-width="2"/><path d="M16 8C11.589 8 8 11.589 8 16" stroke="#0f766e" stroke-width="1.5" stroke-linecap="round"/><path d="M16 10.5C12.962 10.5 10.5 12.962 10.5 16" stroke="#0f766e" stroke-width="1.5" stroke-linecap="round"/><path d="M16 13C14.343 13 13 14.343 13 16" stroke="#0f766e" stroke-width="1.5" stroke-linecap="round"/><path d="M16 8C20.411 8 24 11.589 24 16" stroke="#14b8a6" stroke-width="1.5" stroke-linecap="round"/><path d="M16 10.5C19.038 10.5 21.5 12.962 21.5 16" stroke="#14b8a6" stroke-width="1.5" stroke-linecap="round"/><path d="M16 13C17.657 13 19 14.343 19 16" stroke="#14b8a6" stroke-width="1.5" stroke-linecap="round"/><circle cx="16" cy="16" r="2" fill="#0f766e"/></svg>
     </div>
     <div class="brand-text">
       <span class="brand-name">BiometriQ</span>
       <span class="brand-sub">Exam Auth System</span>
     </div>
   </div>
-
   <nav class="sidebar-nav" role="navigation" aria-label="Main navigation">
     <button class="nav-item active" id="nav-register" data-page="register" aria-current="page">
-      <span class="nav-icon">
-        <svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"/></svg>
-      </span>
+      <span class="nav-icon"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"/></svg></span>
       <span class="nav-label">Register Student</span>
       <span class="nav-indicator"></span>
     </button>
     <button class="nav-item" id="nav-enroll" data-page="enroll">
-      <span class="nav-icon">
-        <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6.625 2.655A9 9 0 0119 11a1 1 0 11-2 0 7 7 0 00-9.625-6.492 1 1 0 11-.75-1.853zM4.662 4.959A1 1 0 014.75 6.37 6.97 6.97 0 003 11a1 1 0 11-2 0 8.97 8.97 0 012.25-5.953 1 1 0 011.412-.088z"/><path fill-rule="evenodd" d="M5 11a5 5 0 1110 0 1 1 0 11-2 0 3 3 0 10-6 0c0 1.677-.345 3.276-.968 4.729a1 1 0 11-1.838-.789A9.964 9.964 0 005 11zm8.921 2.012a1 1 0 01.831 1.145 19.86 19.86 0 01-.545 2.436 1 1 0 11-1.92-.558c.207-.713.371-1.445.49-2.192a1 1 0 011.144-.831z"/></svg>
-      </span>
+      <span class="nav-icon"><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6.625 2.655A9 9 0 0119 11a1 1 0 11-2 0 7 7 0 00-9.625-6.492 1 1 0 11-.75-1.853z"/></svg></span>
       <span class="nav-label">Enroll Fingerprint</span>
       <span class="nav-indicator"></span>
     </button>
     <button class="nav-item" id="nav-students" data-page="students">
-      <span class="nav-icon">
-        <svg viewBox="0 0 20 20" fill="currentColor"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/></svg>
-      </span>
+      <span class="nav-icon"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/></svg></span>
       <span class="nav-label">Student Records</span>
       <span class="nav-indicator"></span>
     </button>
+    <div class="nav-divider"></div>
+    <button class="nav-item" id="nav-admin" data-page="admin">
+      <span class="nav-icon"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"/></svg></span>
+      <span class="nav-label">Registration Queue</span>
+      <span class="nav-indicator"></span>
+    </button>
+    <button class="nav-item" id="nav-exams" data-page="exams">
+      <span class="nav-icon"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/><path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5z"/></svg></span>
+      <span class="nav-label">Manage Exams</span>
+      <span class="nav-indicator"></span>
+    </button>
+    <button class="nav-item" id="nav-seats" data-page="seats">
+      <span class="nav-icon"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg></span>
+      <span class="nav-label">Seat Mapping</span>
+      <span class="nav-indicator"></span>
+    </button>
+    <button class="nav-item" id="nav-reports" data-page="reports">
+      <span class="nav-icon"><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z"/></svg></span>
+      <span class="nav-label">Reports & Analytics</span>
+      <span class="nav-indicator"></span>
+    </button>
   </nav>
-
   <div class="sidebar-footer">
     <div class="system-status" id="system-status">
       <span class="status-dot"></span>
@@ -78,162 +70,110 @@
   </div>
 </aside>
 
-<!-- ──────────────────────────────────────────── -->
-<!--  MAIN CONTENT                                -->
-<!-- ──────────────────────────────────────────── -->
 <main class="main-content" id="main-content">
-
-  <!-- Mobile header -->
   <header class="mobile-header">
-    <button class="hamburger" id="hamburger" aria-label="Toggle navigation">
-      <span></span><span></span><span></span>
-    </button>
+    <button class="hamburger" id="hamburger" aria-label="Toggle navigation"><span></span><span></span><span></span></button>
     <span class="mobile-brand">BiometriQ</span>
   </header>
-
-  <!-- Toast container -->
   <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
-  <!-- ────────────────────────────────────── -->
-  <!-- PAGE: REGISTER STUDENT                 -->
-  <!-- ────────────────────────────────────── -->
-  <section class="page active" id="page-register" aria-labelledby="reg-heading">
+  <!-- ═══ PAGE: Register Student (existing) ═══ -->
+  <section class="page active" id="page-register">
     <div class="page-header">
-      <div>
-        <h1 class="page-title" id="reg-heading">Register Student</h1>
-        <p class="page-subtitle">Add a new student to the exam hall authentication system</p>
-      </div>
+      <div><h1 class="page-title">Register Student</h1><p class="page-subtitle">Add a new student to the exam hall authentication system</p></div>
     </div>
-
     <div class="card-grid two-col">
-      <!-- Left: Form -->
       <div class="card form-card">
-        <form id="register-form" novalidate>
-          {% csrf_token %}
+        <form id="register-form" novalidate>{% csrf_token %}
           <div class="form-section-title">Personal Information</div>
-
           <div class="form-row">
             <div class="form-group">
-              <label for="reg-registration-no" class="form-label">Registration No <span class="required">*</span></label>
+              <label class="form-label">Registration No <span class="required">*</span></label>
               <input type="text" id="reg-registration-no" name="registration_no" class="form-input" placeholder="e.g. 2024-BCS-001" required />
               <span class="field-error" id="err-registration-no"></span>
             </div>
             <div class="form-group">
-              <label for="reg-full-name" class="form-label">Full Name <span class="required">*</span></label>
+              <label class="form-label">Full Name <span class="required">*</span></label>
               <input type="text" id="reg-full-name" name="full_name" class="form-input" placeholder="Full legal name" required />
               <span class="field-error" id="err-full-name"></span>
             </div>
           </div>
-
           <div class="form-row">
             <div class="form-group">
-              <label for="reg-dob" class="form-label">Date of Birth</label>
+              <label class="form-label">Date of Birth</label>
               <input type="date" id="reg-dob" name="date_of_birth" class="form-input" />
             </div>
             <div class="form-group">
-              <label for="reg-gender" class="form-label">Gender</label>
-              <select id="reg-gender" name="gender" class="form-input form-select">
-                <option value="">Select gender</option>
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
-                <option value="Other">Other</option>
-              </select>
+              <label class="form-label">Gender</label>
+              <select id="reg-gender" name="gender" class="form-input form-select"><option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option></select>
             </div>
           </div>
-
           <div class="form-group">
-            <label for="reg-college" class="form-label">College / Institution</label>
+            <label class="form-label">College / Institution</label>
             <input type="text" id="reg-college" name="college_name" class="form-input" placeholder="e.g. Tribhuvan University" />
           </div>
-
           <div class="form-row">
             <div class="form-group">
-              <label for="reg-email" class="form-label">Email Address</label>
+              <label class="form-label">Email Address</label>
               <input type="email" id="reg-email" name="email" class="form-input" placeholder="student@college.edu.np" />
             </div>
             <div class="form-group">
-              <label for="reg-phone" class="form-label">Phone Number</label>
+              <label class="form-label">Phone Number</label>
               <input type="tel" id="reg-phone" name="phone" class="form-input" placeholder="+977 98XXXXXXXX" />
             </div>
           </div>
-
           <div class="form-section-title" style="margin-top:1.5rem;">Consent</div>
           <label class="checkbox-label" for="reg-consent">
             <input type="checkbox" id="reg-consent" name="consent_signed" class="checkbox-input" checked />
             <span class="checkbox-custom"></span>
-            <span class="checkbox-text">I consent to biometric data collection for exam hall authentication purposes in accordance with institutional policy.</span>
+            <span class="checkbox-text">I consent to biometric data collection for exam hall authentication.</span>
           </label>
-
           <button type="submit" class="btn btn-primary btn-full" id="reg-submit-btn">
-            <span class="btn-text">Register Student</span>
-            <span class="btn-spinner" aria-hidden="true"></span>
+            <span class="btn-text">Register Student</span><span class="btn-spinner"></span>
             <svg class="btn-icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z"/></svg>
           </button>
         </form>
       </div>
-
-      <!-- Right: Photo upload + success state -->
       <div class="card side-card">
         <div class="form-section-title">Profile Photo</div>
-        <div class="photo-upload-zone" id="photo-upload-zone" role="button" tabindex="0" aria-label="Upload profile photo">
+        <div class="photo-upload-zone" id="photo-upload-zone" role="button" tabindex="0">
           <div class="photo-preview-wrapper" id="photo-preview-wrapper">
-            <div class="photo-placeholder" id="photo-placeholder">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/></svg>
-              <span>Click or drag to upload</span>
-            </div>
+            <div class="photo-placeholder" id="photo-placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/></svg><span>Click or drag to upload</span></div>
             <img id="photo-preview-img" class="photo-preview-img hidden" alt="Profile preview" />
           </div>
-          <input type="file" id="reg-photo" name="photo" accept="image/*" class="file-input" aria-label="Profile photo file input" />
+          <input type="file" id="reg-photo" name="photo" accept="image/*" class="file-input" />
           <p class="upload-hint">JPG or PNG, max 5MB</p>
         </div>
-
-        <!-- Registration success card (hidden until success) -->
         <div class="success-card hidden" id="reg-success-card">
-          <div class="success-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-          </div>
+          <div class="success-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div>
           <h3 class="success-title">Student Registered!</h3>
           <div class="success-detail" id="reg-success-detail"></div>
-          <button class="btn btn-secondary btn-full" id="go-enroll-btn">
-            <svg viewBox="0 0 20 20" fill="currentColor" style="width:16px;height:16px;margin-right:6px"><path fill-rule="evenodd" d="M6.625 2.655A9 9 0 0119 11a1 1 0 11-2 0 7 7 0 00-9.625-6.492 1 1 0 11-.75-1.853z" clip-rule="evenodd"/></svg>
-            Enroll Fingerprint Now
-          </button>
+          <button class="btn btn-secondary btn-full" id="go-enroll-btn">Enroll Fingerprint Now</button>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ────────────────────────────────────────── -->
-  <!-- PAGE: ENROLL FINGERPRINT                   -->
-  <!-- ────────────────────────────────────────── -->
-  <section class="page hidden" id="page-enroll" aria-labelledby="enroll-heading">
+  <!-- ═══ PAGE: Enroll Fingerprint (existing) ═══ -->
+  <section class="page hidden" id="page-enroll">
     <div class="page-header">
-      <div>
-        <h1 class="page-title" id="enroll-heading">Enroll Fingerprint</h1>
-        <p class="page-subtitle">Upload a right-thumb fingerprint photo for biometric authentication</p>
-      </div>
+      <div><h1 class="page-title">Enroll Fingerprint</h1><p class="page-subtitle">Upload a fingerprint photo for biometric authentication</p></div>
     </div>
-
     <div class="card-grid two-col">
       <div class="card form-card">
-        <form id="enroll-form" novalidate>
-          {% csrf_token %}
-
+        <form id="enroll-form" novalidate>{% csrf_token %}
           <div class="info-banner" role="note">
-            <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clip-rule="evenodd"/></svg>
-            <span>Use a clear photo of the student's <strong>right thumb</strong> on a plain white background with good lighting.</span>
+            <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z"/></svg>
+            <span>Use a clear photo of the student's <strong>right thumb</strong> on a plain white background.</span>
           </div>
-
           <div class="form-group">
-            <label for="enroll-student-id" class="form-label">Student ID <span class="required">*</span></label>
+            <label class="form-label">Student ID <span class="required">*</span></label>
             <div class="input-with-button">
               <input type="number" id="enroll-student-id" name="student_id" class="form-input" placeholder="Enter student ID" required min="1" />
               <button type="button" class="btn btn-ghost" id="lookup-student-btn">Lookup</button>
             </div>
             <span class="field-error" id="err-enroll-student-id"></span>
           </div>
-
-          <!-- Student lookup result badge -->
           <div class="student-badge hidden" id="student-badge">
             <div class="student-badge-avatar" id="student-badge-avatar">?</div>
             <div class="student-badge-info">
@@ -242,172 +182,255 @@
             </div>
             <div class="student-badge-status" id="student-badge-status"></div>
           </div>
-
           <div class="form-group">
-            <label class="form-label">Fingerprint Image <span class="required">*</span> <em style="font-weight:400;opacity:.6;">(right thumb)</em></label>
-            <div class="dropzone" id="fingerprint-dropzone" role="button" tabindex="0" aria-label="Upload fingerprint image">
+            <label class="form-label">Fingerprint Image <span class="required">*</span></label>
+            <div class="dropzone" id="fingerprint-dropzone" role="button" tabindex="0">
               <div class="dropzone-inner" id="dropzone-inner">
                 <div class="dropzone-icon">
-                  <svg viewBox="0 0 64 80" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M32 4C20.954 4 12 12.954 12 24" stroke="url(#fp1)" stroke-width="3" stroke-linecap="round"/>
-                    <path d="M32 12C25.373 12 20 17.373 20 24" stroke="url(#fp1)" stroke-width="3" stroke-linecap="round"/>
-                    <path d="M32 20C28.686 20 26 22.686 26 26v12" stroke="url(#fp1)" stroke-width="3" stroke-linecap="round"/>
-                    <path d="M32 4C43.046 4 52 12.954 52 24v10" stroke="url(#fp2)" stroke-width="3" stroke-linecap="round"/>
-                    <path d="M32 12C38.627 12 44 17.373 44 24v8" stroke="url(#fp2)" stroke-width="3" stroke-linecap="round"/>
-                    <path d="M32 20C35.314 20 38 22.686 38 26v12" stroke="url(#fp2)" stroke-width="3" stroke-linecap="round"/>
-                    <circle cx="32" cy="26" r="3" fill="url(#fp1)"/>
-                    <path d="M26 38c0 3.314 2.686 6 6 6s6-2.686 6-6" stroke="url(#fp2)" stroke-width="3" stroke-linecap="round"/>
-                    <path d="M20 34c0 6.627 5.373 12 12 12s12-5.373 12-12" stroke="url(#fp1)" stroke-width="3" stroke-linecap="round"/>
-                    <path d="M12 28c0 11.046 8.954 20 20 20s20-8.954 20-20" stroke="url(#fp2)" stroke-width="3" stroke-linecap="round"/>
-                    <!-- upload arrow -->
-                    <path d="M32 58v14M26 64l6-6 6 6" stroke="url(#fp1)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-                    <defs>
-                      <linearGradient id="fp1" x1="0" y1="0" x2="64" y2="80" gradientUnits="userSpaceOnUse">
-                        <stop stop-color="#3b82f6"/>
-                        <stop offset="1" stop-color="#06b6d4"/>
-                      </linearGradient>
-                      <linearGradient id="fp2" x1="64" y1="0" x2="0" y2="80" gradientUnits="userSpaceOnUse">
-                        <stop stop-color="#06b6d4"/>
-                        <stop offset="1" stop-color="#8b5cf6"/>
-                      </linearGradient>
-                    </defs>
-                  </svg>
+                  <svg viewBox="0 0 64 80" fill="none"><path d="M32 4C20.954 4 12 12.954 12 24" stroke="#0f766e" stroke-width="3" stroke-linecap="round"/><path d="M32 12C25.373 12 20 17.373 20 24" stroke="#0f766e" stroke-width="3" stroke-linecap="round"/><path d="M32 20C28.686 20 26 22.686 26 26v12" stroke="#0f766e" stroke-width="3" stroke-linecap="round"/><path d="M32 4C43.046 4 52 12.954 52 24v10" stroke="#14b8a6" stroke-width="3" stroke-linecap="round"/><path d="M32 12C38.627 12 44 17.373 44 24v8" stroke="#14b8a6" stroke-width="3" stroke-linecap="round"/><path d="M32 20C35.314 20 38 22.686 38 26v12" stroke="#14b8a6" stroke-width="3" stroke-linecap="round"/><circle cx="32" cy="26" r="3" fill="#0f766e"/><path d="M26 38c0 3.314 2.686 6 6 6s6-2.686 6-6" stroke="#14b8a6" stroke-width="3" stroke-linecap="round"/><path d="M20 34c0 6.627 5.373 12 12 12s12-5.373 12-12" stroke="#0f766e" stroke-width="3" stroke-linecap="round"/><path d="M12 28c0 11.046 8.954 20 20 20s20-8.954 20-20" stroke="#14b8a6" stroke-width="3" stroke-linecap="round"/><path d="M32 58v14M26 64l6-6 6 6" stroke="#0f766e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </div>
                 <p class="dropzone-text">Drag & drop fingerprint image here</p>
                 <p class="dropzone-subtext">or click to browse</p>
-                <span class="dropzone-formats">JPG · PNG · Min 800×800px</span>
+                <span class="dropzone-formats">JPG · PNG · Min 800x800px</span>
               </div>
               <img id="fingerprint-preview" class="fingerprint-preview hidden" alt="Fingerprint preview" />
             </div>
-            <input type="file" id="enroll-fingerprint" name="fingerprint_image" accept="image/*" class="file-input" aria-label="Fingerprint image file input" />
+            <input type="file" id="enroll-fingerprint" name="fingerprint_image" accept="image/*" class="file-input" />
             <span class="field-error" id="err-fingerprint"></span>
           </div>
-
           <button type="submit" class="btn btn-primary btn-full" id="enroll-submit-btn">
-            <span class="btn-text">Enroll Fingerprint</span>
-            <span class="btn-spinner" aria-hidden="true"></span>
+            <span class="btn-text">Enroll Fingerprint</span><span class="btn-spinner"></span>
             <svg class="btn-icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg>
           </button>
         </form>
       </div>
-
-      <!-- Right: Enrollment result -->
       <div class="card side-card" id="enroll-result-card">
         <div class="form-section-title">Enrollment Result</div>
         <div class="enroll-placeholder" id="enroll-placeholder">
-          <div class="enroll-placeholder-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M7.864 4.243A7.5 7.5 0 0119.5 10.5c0 2.92-.556 5.709-1.568 8.268M5.742 6.364A7.465 7.465 0 004.5 10.5a7.464 7.464 0 01-1.15 3.993m1.989 3.559A11.209 11.209 0 008.25 10.5a3.75 3.75 0 117.5 0c0 .527-.021 1.049-.064 1.565M12 10.5a14.94 14.94 0 01-3.6 9.75m6.633-4.596a18.666 18.666 0 01-2.485 5.33"/></svg>
-          </div>
+          <div class="enroll-placeholder-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M7.864 4.243A7.5 7.5 0 0119.5 10.5c0 2.92-.556 5.709-1.568 8.268M5.742 6.364A7.465 7.465 0 004.5 10.5a7.464 7.464 0 01-1.15 3.993m1.989 3.559A11.209 11.209 0 008.25 10.5a3.75 3.75 0 117.5 0c0 .527-.021 1.049-.064 1.565M12 10.5a14.94 14.94 0 01-3.6 9.75m6.633-4.596a18.666 18.666 0 01-2.485 5.33"/></svg></div>
           <p>Upload a fingerprint image to see enrollment quality results here.</p>
         </div>
-
         <div class="enroll-result hidden" id="enroll-result">
-          <div class="result-header">
-            <div class="result-badge success" id="result-badge">
-              <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/></svg>
-              <span id="result-badge-text">Enrolled Successfully</span>
-            </div>
-          </div>
+          <div class="result-header"><div class="result-badge success" id="result-badge"><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/></svg><span id="result-badge-text">Enrolled Successfully</span></div></div>
           <div class="result-metrics">
-            <div class="metric-item">
-              <span class="metric-label">Minutiae Detected</span>
-              <span class="metric-value" id="result-minutiae">—</span>
-            </div>
-            <div class="metric-item">
-              <span class="metric-label">Overall Quality</span>
-              <div class="quality-bar-wrap">
-                <div class="quality-bar" id="result-quality-bar"></div>
-              </div>
-              <span class="metric-value" id="result-quality-score">—</span>
-            </div>
-            <div class="metric-item">
-              <span class="metric-label">Blur Score</span>
-              <span class="metric-value" id="result-blur">—</span>
-            </div>
-            <div class="metric-item">
-              <span class="metric-label">Contrast Score</span>
-              <span class="metric-value" id="result-contrast">—</span>
-            </div>
-            <div class="metric-item">
-              <span class="metric-label">Edge Density</span>
-              <span class="metric-value" id="result-edge">—</span>
-            </div>
-            <div class="metric-item">
-              <span class="metric-label">Processing Steps</span>
-              <span class="metric-value" id="result-steps">—</span>
-            </div>
+            <div class="metric-item"><span class="metric-label">Minutiae Detected</span><span class="metric-value" id="result-minutiae">—</span></div>
+            <div class="metric-item"><span class="metric-label">Overall Quality</span><div class="quality-bar-wrap"><div class="quality-bar" id="result-quality-bar"></div></div><span class="metric-value" id="result-quality-score">—</span></div>
+            <div class="metric-item"><span class="metric-label">Blur Score</span><span class="metric-value" id="result-blur">—</span></div>
+            <div class="metric-item"><span class="metric-label">Contrast Score</span><span class="metric-value" id="result-contrast">—</span></div>
+            <div class="metric-item"><span class="metric-label">Edge Density</span><span class="metric-value" id="result-edge">—</span></div>
+            <div class="metric-item"><span class="metric-label">Processing Steps</span><span class="metric-value" id="result-steps">—</span></div>
           </div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ────────────────────────────────────────── -->
-  <!-- PAGE: STUDENT RECORDS                      -->
-  <!-- ────────────────────────────────────────── -->
-  <section class="page hidden" id="page-students" aria-labelledby="students-heading">
+  <!-- ═══ PAGE: Student Records (existing) ═══ -->
+  <section class="page hidden" id="page-students">
     <div class="page-header">
-      <div>
-        <h1 class="page-title" id="students-heading">Student Records</h1>
-        <p class="page-subtitle">All registered students and their enrollment status</p>
-      </div>
-      <button class="btn btn-primary" id="refresh-students-btn">
-        <svg viewBox="0 0 20 20" fill="currentColor" style="width:16px;height:16px;margin-right:6px"><path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"/></svg>
-        Refresh
-      </button>
+      <div><h1 class="page-title">Student Records</h1><p class="page-subtitle">All registered students and their enrollment status</p></div>
+      <button class="btn btn-primary" id="refresh-students-btn"><svg viewBox="0 0 20 20" fill="currentColor" style="width:16px;height:16px;margin-right:6px"><path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"/></svg>Refresh</button>
     </div>
-
-    <!-- Stats bar -->
     <div class="stats-bar" id="stats-bar">
-      <div class="stat-pill">
-        <span class="stat-icon">👥</span>
-        <span class="stat-num" id="stat-total">—</span>
-        <span class="stat-lbl">Total Students</span>
-      </div>
-      <div class="stat-pill enrolled">
-        <span class="stat-icon">✅</span>
-        <span class="stat-num" id="stat-enrolled">—</span>
-        <span class="stat-lbl">Enrolled</span>
-      </div>
-      <div class="stat-pill pending">
-        <span class="stat-icon">⏳</span>
-        <span class="stat-num" id="stat-pending">—</span>
-        <span class="stat-lbl">Pending</span>
-      </div>
+      <div class="stat-pill"><span class="stat-icon">👥</span><span class="stat-num" id="stat-total">—</span><span class="stat-lbl">Total Students</span></div>
+      <div class="stat-pill enrolled"><span class="stat-icon">✅</span><span class="stat-num" id="stat-enrolled">—</span><span class="stat-lbl">Enrolled</span></div>
+      <div class="stat-pill pending"><span class="stat-icon">⏳</span><span class="stat-num" id="stat-pending">—</span><span class="stat-lbl">Pending</span></div>
     </div>
-
-    <!-- Search -->
-    <div class="search-bar">
-      <svg class="search-icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"/></svg>
-      <input type="search" id="student-search" class="search-input" placeholder="Search by name, registration no, or college…" aria-label="Search students" />
-    </div>
-
-    <!-- Student grid -->
+    <div class="search-bar"><svg class="search-icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"/></svg><input type="search" id="student-search" class="search-input" placeholder="Search by name, registration no, or college…" /></div>
     <div class="student-grid" id="student-grid">
-      <div class="loading-state" id="students-loading">
-        <div class="spinner-large"></div>
-        <p>Loading students…</p>
+      <div class="loading-state" id="students-loading"><div class="spinner-large"></div><p>Loading students…</p></div>
+      <div class="empty-state hidden" id="students-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z"/></svg><p>No students found.</p></div>
+    </div>
+  </section>
+
+  <!-- ═══ PAGE: Registration Queue (Admin) ═══ -->
+  <section class="page hidden" id="page-admin">
+    <div class="page-header">
+      <div><h1 class="page-title">Registration Queue</h1><p class="page-subtitle">Review and approve student registrations</p></div>
+      <button class="btn btn-primary" id="admin-refresh-btn"><svg viewBox="0 0 20 20" fill="currentColor" style="width:16px;height:16px;margin-right:6px"><path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1z"/></svg>Refresh</button>
+    </div>
+    <div class="filter-bar" id="admin-filter-bar">
+      <button class="filter-btn active" data-status="">All</button>
+      <button class="filter-btn" data-status="SUBMITTED">Submitted</button>
+      <button class="filter-btn" data-status="APPROVED">Approved</button>
+      <button class="filter-btn" data-status="REJECTED">Rejected</button>
+      <button class="filter-btn" data-status="REUPLOAD_REQUESTED">Re-upload</button>
+    </div>
+    <div class="table-wrap" id="admin-table-wrap">
+      <table class="data-table" id="admin-table">
+        <thead><tr><th>ID</th><th>Name</th><th>Reg No</th><th>Email</th><th>Status</th><th>Docs</th><th>Date</th><th>Actions</th></tr></thead>
+        <tbody id="admin-table-body"></tbody>
+      </table>
+      <div class="loading-state" id="admin-loading"><div class="spinner-large"></div><p>Loading registrations…</p></div>
+      <div class="empty-state hidden" id="admin-empty"><p>No registrations found.</p></div>
+    </div>
+  </section>
+
+  <!-- ═══ PAGE: Manage Exams ═══ -->
+  <section class="page hidden" id="page-exams">
+    <div class="page-header">
+      <div><h1 class="page-title">Manage Exams</h1><p class="page-subtitle">Configure subjects, centers, halls, and exam sessions</p></div>
+    </div>
+    <div class="tabs-bar" id="exams-tabs">
+      <button class="tab-btn active" data-tab="subjects">Subjects</button>
+      <button class="tab-btn" data-tab="centers">Centers & Halls</button>
+      <button class="tab-btn" data-tab="exams">Exams</button>
+    </div>
+
+    <!-- Tab: Subjects -->
+    <div class="tab-panel active" id="tab-subjects">
+      <div class="card">
+        <div class="inline-form" id="subject-form-wrap">
+          <input type="text" id="subject-code" class="form-input" placeholder="Code (e.g. MATH101)" style="max-width:160px" />
+          <input type="text" id="subject-name" class="form-input" placeholder="Subject name" style="flex:1" />
+          <button class="btn btn-primary" id="subject-add-btn">Add Subject</button>
+        </div>
+        <table class="data-table" id="subjects-table"><thead><tr><th>ID</th><th>Code</th><th>Name</th><th>Action</th></tr></thead><tbody id="subjects-table-body"></tbody></table>
+        <div class="loading-state" id="subjects-loading"><p>Loading subjects…</p></div>
       </div>
-      <div class="empty-state hidden" id="students-empty">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" /></svg>
-        <p>No students found.</p>
+    </div>
+
+    <!-- Tab: Centers & Halls -->
+    <div class="tab-panel" id="tab-centers">
+      <div class="card-grid two-col">
+        <div class="card">
+          <div class="form-section-title">Exam Centers</div>
+          <div class="inline-form"><input type="text" id="center-name" class="form-input" placeholder="Center name" /><input type="text" id="center-address" class="form-input" placeholder="Address" /><button class="btn btn-primary" id="center-add-btn">Add</button></div>
+          <table class="data-table" id="centers-table"><thead><tr><th>ID</th><th>Name</th><th>Address</th><th>Action</th></tr></thead><tbody id="centers-table-body"></tbody></table>
+        </div>
+        <div class="card">
+          <div class="form-section-title">Halls</div>
+          <div class="inline-form multi-row">
+            <select id="hall-center-select" class="form-input form-select"><option value="">— Select Center —</option></select>
+            <input type="text" id="hall-name" class="form-input" placeholder="Hall name" />
+            <input type="number" id="hall-rows" class="form-input" placeholder="Rows" style="max-width:80px" />
+            <input type="number" id="hall-cols" class="form-input" placeholder="Cols" style="max-width:80px" />
+            <button class="btn btn-primary" id="hall-add-btn">Add</button>
+          </div>
+          <table class="data-table" id="halls-table"><thead><tr><th>ID</th><th>Name</th><th>Center</th><th>Rows</th><th>Cols</th><th>Capacity</th><th>Action</th></tr></thead><tbody id="halls-table-body"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: Exams -->
+    <div class="tab-panel" id="tab-exams">
+      <div class="card">
+        <div class="form-section-title">Create / Edit Exam</div>
+        <form id="exam-form" class="exam-form-grid">
+          <div class="form-row three-col">
+            <div class="form-group"><label class="form-label">Subject</label><select id="exam-subject" class="form-input form-select"><option value="">— Select —</option></select></div>
+            <div class="form-group"><label class="form-label">Date</label><input type="date" id="exam-date" class="form-input" /></div>
+            <div class="form-group"><label class="form-label">Start Time</label><input type="time" id="exam-time" class="form-input" /></div>
+          </div>
+          <div class="form-row three-col">
+            <div class="form-group"><label class="form-label">Duration (min)</label><input type="number" id="exam-duration" class="form-input" value="180" /></div>
+            <div class="form-group"><label class="form-label">Center</label><select id="exam-center" class="form-input form-select"><option value="">— Select —</option></select></div>
+            <div class="form-group"><label class="form-label">Cutoff Date</label><input type="date" id="exam-cutoff" class="form-input" /></div>
+          </div>
+          <div class="form-row"><div class="form-group"><label class="form-label">Assigned Halls (Ctrl+click to multi-select)</label><select id="exam-halls" class="form-input form-select" multiple size="4"></select></div></div>
+          <button type="submit" class="btn btn-primary" id="exam-save-btn">Create Exam</button>
+          <button type="button" class="btn btn-secondary hidden" id="exam-conflicts-btn">Check Scheduling Conflicts</button>
+        </form>
+        <div class="exam-list-header" style="margin-top:24px"><span class="form-section-title" style="margin-bottom:0">Scheduled Exams</span><button class="btn btn-ghost" id="exam-refresh-btn">Refresh</button></div>
+        <table class="data-table" id="exams-table"><thead><tr><th>ID</th><th>Subject</th><th>Date</th><th>Time</th><th>Center</th><th>Students</th><th>Halls</th><th>Locked</th><th>Action</th></tr></thead><tbody id="exams-table-body"></tbody></table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ PAGE: Seat Mapping ═══ -->
+  <section class="page hidden" id="page-seats">
+    <div class="page-header">
+      <div><h1 class="page-title">Seat Mapping</h1><p class="page-subtitle">Auto-assign seats for exam sessions</p></div>
+    </div>
+    <div class="card-grid two-col">
+      <div class="card">
+        <div class="form-section-title">Generate Seat Map</div>
+        <div class="form-group"><label class="form-label">Select Exam</label><select id="seats-exam-select" class="form-input form-select"></select></div>
+        <div class="checkbox-label" style="margin:12px 0">
+          <input type="checkbox" id="seats-buffer" class="checkbox-input" checked /><span class="checkbox-custom"></span>
+          <span class="checkbox-text">Reserve buffer row for late registrations</span>
+        </div>
+        <button class="btn btn-primary btn-full" id="seats-generate-btn"><svg viewBox="0 0 20 20" fill="currentColor" style="width:16px;height:16px"><path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z"/></svg>Generate Seat Map</button>
+        <div id="seats-result" class="hidden" style="margin-top:16px"></div>
+      </div>
+      <div class="card">
+        <div class="form-section-title">View Seats</div>
+        <div class="form-group"><label class="form-label">Select Exam</label><select id="seats-view-exam" class="form-input form-select"></select></div>
+        <div class="form-group"><label class="form-label">Hall (optional)</label><select id="seats-view-hall" class="form-input form-select"><option value="">All Halls</option></select></div>
+        <button class="btn btn-secondary btn-full" id="seats-view-btn">View Seat Assignments</button>
+        <div id="seats-view-result" class="hidden" style="margin-top:16px"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ PAGE: Reports & Analytics ═══ -->
+  <section class="page hidden" id="page-reports">
+    <div class="page-header">
+      <div><h1 class="page-title">Reports & Analytics</h1><p class="page-subtitle">Attendance reports and exam analytics</p></div>
+    </div>
+    <div class="tabs-bar" id="reports-tabs">
+      <button class="tab-btn active" data-tab="attendance">Attendance</button>
+      <button class="tab-btn" data-tab="analytics">Analytics</button>
+    </div>
+
+    <!-- Tab: Attendance -->
+    <div class="tab-panel active" id="tab-attendance">
+      <div class="card-grid two-col">
+        <div class="card">
+          <div class="form-section-title">Attendance by Exam</div>
+          <div class="form-group"><select id="report-exam-select" class="form-input form-select"></select></div>
+          <div class="btn-group"><button class="btn btn-primary" id="report-attendance-btn">View Attendance</button><button class="btn btn-secondary" id="report-csv-btn">Export CSV</button></div>
+          <div id="report-attendance-result" class="hidden" style="margin-top:16px"></div>
+        </div>
+        <div class="card">
+          <div class="form-section-title">Absentee List</div>
+          <div class="form-group"><select id="absent-exam-select" class="form-input form-select"></select></div>
+          <button class="btn btn-primary" id="absent-view-btn">View Absentees</button>
+          <div id="absent-result" class="hidden" style="margin-top:16px"></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:20px">
+        <div class="form-section-title">Fallback & Override Reports</div>
+        <div class="btn-group">
+          <button class="btn btn-secondary" id="report-fallback-btn">View Fallback Report</button>
+          <button class="btn btn-secondary" id="report-override-btn">View Override Report</button>
+        </div>
+        <div id="report-fallback-result" class="hidden" style="margin-top:12px"></div>
+        <div id="report-override-result" class="hidden" style="margin-top:12px"></div>
+      </div>
+    </div>
+
+    <!-- Tab: Analytics -->
+    <div class="tab-panel" id="tab-analytics">
+      <div class="dashboard-grid" id="analytics-grid">
+        <div class="analytics-card" id="analytics-rate">
+          <div class="form-section-title">Attendance Rate</div>
+          <div class="analytics-loading"><div class="spinner-large"></div></div>
+        </div>
+        <div class="analytics-card" id="analytics-halls">
+          <div class="form-section-title">Hall Occupancy</div>
+          <div class="analytics-loading"><div class="spinner-large"></div></div>
+        </div>
+        <div class="analytics-card" id="analytics-fallback">
+          <div class="form-section-title">Fallback Rate by Center</div>
+          <div class="analytics-loading"><div class="spinner-large"></div></div>
+        </div>
+        <div class="analytics-card" id="analytics-peak">
+          <div class="form-section-title">Peak Entry Times</div>
+          <div class="analytics-loading"><div class="spinner-large"></div></div>
+        </div>
       </div>
     </div>
   </section>
 </main>
 
-<!-- ──────────────────────────────────────────── -->
-<!--  STUDENT DETAIL MODAL                        -->
-<!-- ──────────────────────────────────────────── -->
-<div class="modal-overlay hidden" id="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+<!-- ═══ Student Detail Modal ═══ -->
+<div class="modal-overlay hidden" id="modal-overlay" role="dialog" aria-modal="true">
   <div class="modal">
     <button class="modal-close" id="modal-close" aria-label="Close">&times;</button>
     <div class="modal-header">
       <div class="modal-avatar" id="modal-avatar"></div>
-      <div>
-        <h2 class="modal-title" id="modal-title">—</h2>
-        <span class="modal-reg" id="modal-reg">—</span>
-      </div>
+      <div><h2 class="modal-title" id="modal-title">—</h2><span class="modal-reg" id="modal-reg">—</span></div>
       <div class="modal-badge" id="modal-badge"></div>
     </div>
     <div class="modal-body">
@@ -423,14 +446,8 @@
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" id="modal-enroll-btn">
-        <svg viewBox="0 0 20 20" fill="currentColor" style="width:15px;height:15px;margin-right:5px"><path fill-rule="evenodd" d="M6.625 2.655A9 9 0 0119 11"/></svg>
-        Enroll Fingerprint
-      </button>
-      <button class="btn btn-danger" id="modal-delete-btn">
-        <svg viewBox="0 0 20 20" fill="currentColor" style="width:15px;height:15px;margin-right:5px"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z"/></svg>
-        Delete Student
-      </button>
+      <button class="btn btn-secondary" id="modal-enroll-btn">Enroll Fingerprint</button>
+      <button class="btn btn-danger" id="modal-delete-btn">Delete Student</button>
     </div>
   </div>
 </div>

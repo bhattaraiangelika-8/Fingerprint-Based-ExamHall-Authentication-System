@@ -30,9 +30,9 @@ from .serializers import (
     MedicalFormUploadSerializer,
 )
 from .preprocessing.validator import validate_image, ValidationError
-from .preprocessing.pipeline import preprocess_camera_image
-from .templates_engine.extractor import extract_template
-from .templates_engine.encryption import encrypt_template
+from .preprocessing.pipeline import preprocess_camera_image, preprocess_sensor_image
+from .templates_engine.extractor import extract_template, FingerprintTemplate
+from .templates_engine.encryption import encrypt_template, decrypt_template
 from .templates_engine.matcher import match_fingerprints
 
 logger = logging.getLogger('fingerprint')
@@ -62,6 +62,53 @@ def _save_fingerprint_image(image_array, prefix, student_id=None, mode='L'):
 
     logger.info("Saved %s fingerprint image to %s", prefix, filepath)
     return str(filepath)
+
+
+def _save_pipeline_grid(original_image, minutiae_data, prefix, identifier=''):
+    """Combines 8 stages of the pipeline into a single 2x4 grid image and saves it."""
+    import os
+    from datetime import datetime
+    from django.conf import settings
+    import cv2
+    import numpy as np
+    
+    if not minutiae_data:
+        return
+        
+    def to_bgr(img):
+        if img is None:
+            return np.zeros((512, 512, 3), dtype=np.uint8)
+        if len(img.shape) == 2:
+            return cv2.cvtColor(img.astype(np.uint8), cv2.COLOR_GRAY2BGR)
+        return img.astype(np.uint8)
+
+    img1 = to_bgr(original_image)
+    img2 = to_bgr(minutiae_data.get('normalized_img'))
+    img3 = to_bgr(minutiae_data.get('segmented_img'))
+    img4 = to_bgr(minutiae_data.get('orientation_img'))
+    
+    img5 = to_bgr(minutiae_data.get('gabor_img'))
+    img6 = to_bgr(minutiae_data.get('thin_image'))
+    img7 = to_bgr(minutiae_data.get('minutias_img'))
+    img8 = to_bgr(minutiae_data.get('singularities_img'))
+    
+    # Ensure all images are exactly 512x512
+    imgs = [img1, img2, img3, img4, img5, img6, img7, img8]
+    for i in range(len(imgs)):
+        if imgs[i].shape[:2] != (512, 512):
+            imgs[i] = cv2.resize(imgs[i], (512, 512))
+            
+    row1 = np.hstack(imgs[0:4])
+    row2 = np.hstack(imgs[4:8])
+    grid = np.vstack([row1, row2])
+    
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+    student_part = f"_student{identifier}" if identifier else ""
+    filename = f"{prefix}_grid{student_part}_{timestamp}.png"
+    filepath = CAPTURE_DIR / filename
+    
+    cv2.imwrite(str(filepath), grid)
+    logger.info("Saved %s pipeline grid image to %s", prefix, filepath)
 
 
 # ──────────────────────────────────────────────
@@ -124,8 +171,9 @@ def fingerprint_upload(request):
     img_array = np.array(pil_image.convert('RGB'))
     result = preprocess_camera_image(img_array)
 
-    # Save preprocessed enrolled image for visual inspection
+    # Save preprocessed enrolled image and full pipeline grid for visual inspection
     _save_fingerprint_image(result.processed_image, 'enrolled', student_id)
+    _save_pipeline_grid(result.processed_image, result.minutiae_data, 'enrolled', student_id)
 
     # ── Quality check ──
     if not result.quality_result.is_acceptable:
@@ -134,8 +182,9 @@ def fingerprint_upload(request):
             'quality': result.quality_result.to_dict(),
         }, status=status.HTTP_400_BAD_REQUEST)
 
-    # ── Extract template ──
-    template = extract_template(result.processed_image)
+    # ── Extract template (using pre-computed minutiae from pipeline) ──
+    template = extract_template(result.processed_image,
+                                minutiae_data=result.minutiae_data)
 
     if template.count < 5:
         return Response({
@@ -212,15 +261,17 @@ def sensor_capture(request):
     img_array_raw = np.array(pil_image.convert('L'))
     _save_fingerprint_image(img_array_raw, 'sensor_raw')
 
-    # ── Preprocess sensor image (full camera pipeline for better matching) ──
-    img_array = np.array(pil_image.convert('RGB'))  # Convert to RGB for camera pipeline
-    result = preprocess_camera_image(img_array)
+    # ── Preprocess sensor image (sensor pipeline — no region detection needed) ──
+    img_array = np.array(pil_image.convert('L'))  # Sensor images are grayscale
+    result = preprocess_sensor_image(img_array)
 
-    # Save preprocessed sensor image for visual inspection
+    # Save preprocessed sensor image and full pipeline grid for visual inspection
     _save_fingerprint_image(result.processed_image, 'sensor_processed')
+    _save_pipeline_grid(result.processed_image, result.minutiae_data, 'sensor_processed')
 
-    # ── Extract template from probe image ──
-    template = extract_template(result.processed_image)
+    # ── Extract template from probe image (using pre-computed minutiae) ──
+    template = extract_template(result.processed_image,
+                                minutiae_data=result.minutiae_data)
 
     if template.count < 5:
         return Response({
@@ -230,7 +281,9 @@ def sensor_capture(request):
         }, status=status.HTTP_400_BAD_REQUEST)
 
     # ── Match against all enrolled fingerprints ──
-    match_result, matched_student_id = _match_against_enrolled(result.processed_image)
+    match_result, matched_student_id = _match_against_enrolled(
+        result.processed_image, probe_minutiae_data=result.minutiae_data
+    )
 
     is_validated = match_result.is_match if match_result else False
 
@@ -260,7 +313,7 @@ def sensor_capture(request):
     return Response(response_data)
 
 
-def _match_against_enrolled(probe_image):
+def _match_against_enrolled(probe_image, probe_minutiae_data=None):
     """
     Match a probe fingerprint image against all enrolled templates.
 
@@ -292,7 +345,19 @@ def _match_against_enrolled(probe_image):
                 bytes(student.fingerprint_image), dtype=np.uint8
             ).reshape((512, 512))
 
-            result = match_fingerprints(probe_image, stored_image, method='combined')
+            # Decrypt stored template
+            try:
+                decrypted_bytes = decrypt_template(student.fingerprint_template)
+                stored_template = FingerprintTemplate.deserialize(decrypted_bytes)
+            except Exception as e:
+                logger.warning("Template decryption failed for %s: %s", student.student_id, e)
+                continue
+
+            result = match_fingerprints(
+                probe_image, stored_image, method='combined',
+                minutiae_data1=probe_minutiae_data,
+                template2=stored_template
+            )
 
             if result.score > best_score:
                 best_score = result.score
@@ -411,7 +476,19 @@ def fingerprint_match(request):
                 bytes(student.fingerprint_image), dtype=np.uint8
             ).reshape((512, 512))
 
-            match_result = match_fingerprints(probe_image, stored_image, method='combined')
+            # Decrypt stored template
+            try:
+                decrypted_bytes = decrypt_template(student.fingerprint_template)
+                stored_template = FingerprintTemplate.deserialize(decrypted_bytes)
+            except Exception as e:
+                logger.warning("Template decryption failed for %s: %s", student.student_id, e)
+                continue
+
+            match_result = match_fingerprints(
+                probe_image, stored_image, method='combined',
+                minutiae_data1=result.minutiae_data,
+                template2=stored_template
+            )
 
             if match_result.score > best_score:
                 best_score = match_result.score

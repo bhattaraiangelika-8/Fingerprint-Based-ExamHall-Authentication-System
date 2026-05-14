@@ -2,11 +2,11 @@
 #include <HTTPClient.h>
 
 // ============ CONFIG ============
-#define WIFI_SSID     "angelika"
-#define WIFI_PASS     "12345678"
+#define WIFI_SSID     "kamlesh02_2.4"
+#define WIFI_PASS     "CLB2774C69"
 #define SERVER_PORT   8000
 
-String serverIP = "10.137.179.99";  // Change via serial: send "ip=192.168.1.50"
+String serverIP = "192.168.1.71";  // Change via serial: send "ip=192.168.1.50"
 
 #define AS608_RX      16
 #define AS608_TX      17
@@ -129,7 +129,7 @@ bool sendImageToServer() {
     HTTPClient http;
     String url = "http://" + serverIP + ":" + String(SERVER_PORT) + "/api/fingerprint/sensor-capture/";
     http.begin(url);
-    http.setTimeout(15000);  // 15s — backend needs ~7s for template extraction + matching
+    http.setTimeout(45000);  // 30s — backend needs ~7s for template extraction + matching
     http.addHeader("Content-Type", "application/octet-stream");
 
     int code = http.POST(imageBuffer, IMAGE_SIZE);

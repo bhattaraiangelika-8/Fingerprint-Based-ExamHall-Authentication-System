@@ -74,6 +74,7 @@ int8_t readAck() {
 }
 
 bool captureFinger(bool ledOn = true) {
+    delay(500);  // let finger settle before capture
     uint8_t cmd = ledOn ? CMD_CAPTURE_FINGER : CMD_CAPTURE_FINGER_LED_OFF;
     sendPacket(PID_CMD, &cmd, 1);
     int8_t ack = readAck();

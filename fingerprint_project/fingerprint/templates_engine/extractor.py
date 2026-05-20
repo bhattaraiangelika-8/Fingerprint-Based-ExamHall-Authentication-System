@@ -1,13 +1,14 @@
 """
-Template Extraction Module
-──────────────────────────
-Extracts fingerprint minutiae features from preprocessed images
-using the proven crossing-number pipeline (normalization → segmentation
-→ orientation → frequency → gabor → skeletonize → crossing number).
+Template Extraction Module  —  v4 Integration
+──────────────────────────────────────────────
+Extracts FingerprintTemplate from a PreprocessingResult (v4 pipeline output).
 
-Can work in two modes:
-  1. From pre-computed minutiae data (when pipeline already ran)
-  2. Standalone extraction from a raw grayscale image
+Minutiae format from v4 pipeline:
+    {'x': int, 'y': int, 'type': 'end' | 'bif', 'angle': float}
+
+Works in two modes:
+  1. From PreprocessingResult  — zero extra computation (pipeline already ran)
+  2. Standalone from raw image — runs preprocess_camera_image internally
 """
 
 import cv2
@@ -16,26 +17,31 @@ import hashlib
 import struct
 import logging
 
-from ..preprocessing.minutiae_core import (
-    run_minutiae_pipeline,
-    calculate_minutiaes,
+from ..preprocessing.pipeline import (
+    preprocess_camera_image,
+    orientation_field,
+    extract_oriented_minutiae,
+    ridge_frequency_map,
 )
 
 logger = logging.getLogger('fingerprint')
 
+# Minutiae type codes (stored in binary template)
+RIDGE_ENDING   = 1
+BIFURCATION    = 3
 
-# Minutiae types
-RIDGE_ENDING = 1
-BIFURCATION = 3
 
+# ══════════════════════════════════════════════════════════════════
+#  DATA CLASSES
+# ══════════════════════════════════════════════════════════════════
 
 class MinutiaePoint:
     """Single minutiae feature point."""
 
     def __init__(self, x, y, minutiae_type, angle=0.0):
-        self.x = x
-        self.y = y
-        self.type = minutiae_type  # 1=ending, 3=bifurcation
+        self.x     = x
+        self.y     = y
+        self.type  = minutiae_type   # RIDGE_ENDING=1 or BIFURCATION=3
         self.angle = angle
 
     def to_tuple(self):
@@ -45,12 +51,11 @@ class MinutiaePoint:
 class FingerprintTemplate:
     """Container for a fingerprint biometric template."""
 
-    def __init__(self, minutiae_list, singularities_list=None,
-                 width=512, height=512):
-        self.minutiae = minutiae_list  # List[MinutiaePoint]
-        self.singularities = singularities_list or []
-        self.width = width
-        self.height = height
+    def __init__(self, minutiae_list, singularities_list=None, width=400, height=500):
+        self.minutiae       = minutiae_list        # List[MinutiaePoint]
+        self.singularities  = singularities_list or []
+        self.width          = width
+        self.height         = height
 
     @property
     def count(self):
@@ -58,166 +63,200 @@ class FingerprintTemplate:
 
     def serialize(self):
         """
-        Serialize template to compact binary format.
-
-        Format:
-            Header: width(2B) + height(2B) + count(2B) + sing_count(2B)
-            Per minutiae: x(2B) + y(2B) + type(1B) + angle(4B) = 9 bytes
-            Per singularity: x(2B) + y(2B) + type_code(1B) = 5 bytes
+        Compact binary format:
+            Header : width(2B) + height(2B) + count(2B) + sing_count(2B)
+            Minutia: x(2B) + y(2B) + type(1B) + angle(4B)  = 9 bytes each
+            Singul : x(2B) + y(2B) + type_code(1B)          = 5 bytes each
         """
         sing_count = len(self.singularities)
-        data = struct.pack('<HHHH', self.width, self.height,
-                           self.count, sing_count)
+        data = struct.pack('<HHHH', self.width, self.height, self.count, sing_count)
         for m in self.minutiae:
             data += struct.pack('<HHBf', m.x, m.y, m.type, m.angle)
         for s in self.singularities:
-            type_code = {'loop': 1, 'delta': 2, 'whorl': 3}.get(
-                s.get('type', ''), 0
-            )
-            data += struct.pack('<HHB', s.get('x', 0), s.get('y', 0),
-                                type_code)
+            code = {'loop': 1, 'delta': 2, 'whorl': 3}.get(s.get('type', ''), 0)
+            data += struct.pack('<HHB', s.get('x', 0), s.get('y', 0), code)
         return data
 
     @classmethod
     def deserialize(cls, data):
         """Deserialize binary data back to FingerprintTemplate."""
-        header_size = 8  # 4 × uint16
-        width, height, count, sing_count = struct.unpack(
-            '<HHHH', data[:header_size]
-        )
-
+        width, height, count, sing_count = struct.unpack('<HHHH', data[:8])
         minutiae = []
-        offset = header_size
+        offset   = 8
         for _ in range(count):
-            x, y, mtype, angle = struct.unpack(
-                '<HHBf', data[offset:offset + 9]
-            )
+            x, y, mtype, angle = struct.unpack('<HHBf', data[offset:offset + 9])
             minutiae.append(MinutiaePoint(x, y, mtype, angle))
             offset += 9
-
+        type_map      = {1: 'loop', 2: 'delta', 3: 'whorl'}
         singularities = []
-        type_map = {1: 'loop', 2: 'delta', 3: 'whorl'}
         for _ in range(sing_count):
             x, y, tcode = struct.unpack('<HHB', data[offset:offset + 5])
-            singularities.append({
-                'x': x, 'y': y, 'type': type_map.get(tcode, 'unknown')
-            })
+            singularities.append({'x': x, 'y': y, 'type': type_map.get(tcode, 'unknown')})
             offset += 5
-
         return cls(minutiae, singularities, width, height)
 
     def compute_hash(self):
-        """Compute SHA-256 hash of the template for integrity verification."""
+        """SHA-256 of serialized template for integrity verification."""
         return hashlib.sha256(self.serialize()).hexdigest()
 
 
-def extract_template(image, minutiae_data=None):
-    """
-    Extract fingerprint template from a preprocessed image.
+# ══════════════════════════════════════════════════════════════════
+#  PUBLIC API
+# ══════════════════════════════════════════════════════════════════
 
-    If minutiae_data is provided (from pipeline), uses that directly.
-    Otherwise runs the full minutiae extraction pipeline.
+def extract_template(image_or_result, minutiae_data=None):
+    """
+    Extract FingerprintTemplate from a PreprocessingResult or raw image.
 
     Args:
-        image: numpy array (grayscale, preprocessed, 512x512)
-        minutiae_data: optional pre-computed dict from run_minutiae_pipeline
+        image_or_result: PreprocessingResult  OR  numpy array (grayscale)
+        minutiae_data:   ignored — kept for API compatibility
 
     Returns:
         FingerprintTemplate
     """
-    h, w = image.shape[:2]
+    from ..preprocessing.pipeline import PreprocessingResult
 
-    # If pipeline data was pre-computed, use it directly
-    if minutiae_data is None:
-        logger.info("Running standalone minutiae extraction pipeline...")
-        minutiae_data = run_minutiae_pipeline(image, block_size=16)
+    if isinstance(image_or_result, PreprocessingResult):
+        result = image_or_result
+    else:
+        # Standalone mode — run camera pipeline on raw grayscale image
+        logger.info("extract_template: standalone mode, running camera pipeline")
+        result = preprocess_camera_image(image_or_result)
 
-    raw_minutiae = minutiae_data.get('minutiae_points', [])
-    raw_singularities = minutiae_data.get('singularities_points', [])
+    H, W = result.processed_image.shape[:2]
 
-    # Convert raw minutiae dicts to MinutiaePoint objects
-    minutiae = []
+    # Convert v4 minutiae dicts -> MinutiaePoint objects
+    raw_minutiae = result.minutiae   # [{'x','y','type':'end'|'bif','angle'}]
+    minutiae     = []
     for m in raw_minutiae:
-        mtype = RIDGE_ENDING if m['type'] == 'ending' else BIFURCATION
-        minutiae.append(MinutiaePoint(m['x'], m['y'], mtype))
+        mtype = RIDGE_ENDING if m['type'] == 'end' else BIFURCATION
+        minutiae.append(MinutiaePoint(m['x'], m['y'], mtype, m.get('angle', 0.0)))
 
-    # Filter false minutiae (border artifacts and duplicates)
-    minutiae = _filter_minutiae(minutiae, w, h)
+    # Apply false-minutiae filters
+    minutiae = _filter_minutiae(
+        minutiae, W, H,
+        thin_image = result.skeleton,
+        freq_map   = result.ridge_freq_map,
+    )
 
-    # Compute minutiae angles from the skeleton
-    thin_image = minutiae_data.get('thin_image', None)
-    if thin_image is not None:
-        minutiae = _compute_angles(minutiae, thin_image)
+    # Recompute angles from skeleton (redundant but ensures consistency)
+    minutiae = _compute_angles(minutiae, result.skeleton)
 
-    template = FingerprintTemplate(minutiae, raw_singularities, w, h)
-
+    template = FingerprintTemplate(minutiae, [], W, H)
     logger.info(
-        "Template extracted: %d minutiae (%d endings, %d bifurcations), "
-        "%d singularities",
+        "Template extracted: %d minutiae (%d endings, %d bifurcations)",
         template.count,
         sum(1 for m in minutiae if m.type == RIDGE_ENDING),
         sum(1 for m in minutiae if m.type == BIFURCATION),
-        len(raw_singularities),
     )
-
     return template
 
 
-def _filter_minutiae(minutiae, width, height):
+# ══════════════════════════════════════════════════════════════════
+#  FALSE-MINUTIAE FILTERS
+# ══════════════════════════════════════════════════════════════════
+
+def _ridge_width_D(freq_map):
     """
-    Remove false minutiae near borders and duplicates.
+    Half inter-ridge spacing D from frequency map (clamped to [4, 15] px).
+    Used by ridge-width-based false minutiae removal rules.
     """
-    border = 20
-    filtered = []
+    non_zero = freq_map[freq_map > 0]
+    if len(non_zero) == 0:
+        return 8
+    med = float(np.median(non_zero))
+    if med <= 0:
+        return 8
+    return max(4, min(int(0.5 / med + 0.5), 15))
 
-    for m in minutiae:
-        # Skip border minutiae (often artifacts)
-        if m.x < border or m.x > width - border:
+
+def _remove_false_by_ridge_width(minutiae, thin_image, freq_map):
+    """
+    Remove false minutiae using inter-ridge-width rules (m1-m7):
+      - Bifurcation + Termination within D  → hook/spur
+      - Two bifurcations within D           → bridge/overlap
+      - Two terminations within D           → broken ridge
+    Both points in each offending pair are removed.
+    """
+    D      = _ridge_width_D(freq_map)
+    binary = (thin_image < 10).astype(np.uint8)
+    labels = cv2.connectedComponentsWithStats(binary, connectivity=8)[1]
+
+    to_remove = set()
+    for i in range(len(minutiae)):
+        if i in to_remove:
             continue
-        if m.y < border or m.y > height - border:
-            continue
+        for j in range(i + 1, len(minutiae)):
+            if j in to_remove:
+                continue
+            m1, m2 = minutiae[i], minutiae[j]
+            if np.hypot(m1.x - m2.x, m1.y - m2.y) > D:
+                continue
+            x1, y1 = int(m1.x), int(m1.y)
+            x2, y2 = int(m2.x), int(m2.y)
+            h, w   = labels.shape
+            if not (0 <= x1 < w and 0 <= y1 < h and 0 <= x2 < w and 0 <= y2 < h):
+                continue
+            if labels[y1, x1] == 0 or labels[y2, x2] == 0:
+                continue
+            if labels[y1, x1] != labels[y2, x2]:
+                continue
+            to_remove.update({i, j})
 
-        # Skip if too close to another minutiae
-        is_duplicate = False
-        for existing in filtered:
-            dist = np.sqrt((m.x - existing.x) ** 2 + (m.y - existing.y) ** 2)
-            if dist < 10:
-                is_duplicate = True
-                break
+    return [m for idx, m in enumerate(minutiae) if idx not in to_remove]
 
-        if not is_duplicate:
-            filtered.append(m)
 
-    return filtered
+def _filter_minutiae(minutiae, width, height, thin_image=None, freq_map=None):
+    """
+    Multi-stage false-minutiae removal:
+      1. Border removal  (20 px margin)
+      2. Ridge-width rules (m1-m7)  if skeleton + freq_map available
+      3. Duplicate removal           (20 px radius)
+      4. Density filter              (> 100 minutiae → keep isolated ones)
+    """
+    border   = 20
+    filtered = [m for m in minutiae
+                if border <= m.x <= width - border and border <= m.y <= height - border]
+
+    if thin_image is not None and freq_map is not None and len(filtered) > 5:
+        filtered = _remove_false_by_ridge_width(filtered, thin_image, freq_map)
+
+    # Duplicate removal
+    unique = []
+    for m in filtered:
+        if not any(np.hypot(m.x - e.x, m.y - e.y) < 20 for e in unique):
+            unique.append(m)
+
+    # Density filter
+    if len(unique) > 100:
+        densities = [
+            sum(1 for j, n in enumerate(unique) if i != j and np.hypot(m.x-n.x, m.y-n.y) < 30)
+            for i, m in enumerate(unique)
+        ]
+        keep = max(80, len(unique) // 2)
+        idxs = np.argsort(densities)[:keep]
+        unique = [unique[i] for i in sorted(idxs)]
+
+    return unique
 
 
 def _compute_angles(minutiae, skeleton):
     """
-    Compute orientation angle for each minutiae point
-    based on local ridge direction in the skeleton.
+    Refine orientation angle for each minutia from local gradient of skeleton.
     """
     skel = (skeleton > 0).astype(np.float64)
-    # Invert if ridges are white (skeleton from reference has ridges dark)
     if np.mean(skeleton) > 127:
         skel = 1.0 - skel
     h, w = skel.shape
-
     for m in minutiae:
-        x, y = m.x, m.y
-
-        # Small region around minutiae
-        r = 10
-        y1, y2 = max(0, y - r), min(h, y + r)
-        x1, x2 = max(0, x - r), min(w, x + r)
-
-        region = skel[y1:y2, x1:x2]
-
-        if region.size == 0:
+        r   = 10
+        y1  = max(0, m.y - r); y2 = min(h, m.y + r)
+        x1  = max(0, m.x - r); x2 = min(w, m.x + r)
+        rgn = skel[y1:y2, x1:x2]
+        if rgn.size == 0:
             m.angle = 0.0
             continue
-
-        # Compute gradient direction
-        gy, gx = np.gradient(region)
+        gy, gx  = np.gradient(rgn)
         m.angle = float(np.arctan2(np.mean(gy), np.mean(gx)))
-
     return minutiae

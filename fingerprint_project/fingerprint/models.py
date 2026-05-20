@@ -36,9 +36,13 @@ class Student(models.Model):
     email = models.EmailField(max_length=150, blank=True)
     phone = models.CharField(max_length=20, blank=True)
     photo = models.BinaryField(null=True, blank=True)
-    fingerprint_template = models.BinaryField(max_length=4096)
-    fingerprint_hash = models.CharField(max_length=64)
+    fingerprint_template = models.BinaryField(default=b'')
+    fingerprint_hash = models.CharField(max_length=64, blank=True, default='')
     fingerprint_image = models.BinaryField(max_length=262144, null=True, blank=True)
+    fingerprint_image_size = models.CharField(
+        max_length=20, blank=True, default='',
+        help_text="Stored as 'WxH', e.g. '400x500'. Used to reshape fingerprint_image bytes."
+    )
     consent_signed = models.BooleanField(default=True)
 
     # Registration status tracking

@@ -1,0 +1,316 @@
+# Revised Implementation Plan: pipeline_v4.py Integration
+
+## Background
+
+The current `fingerprint_project` pipeline is broken. `pipeline_v4.py` is a fully working,
+tested cross-sensor matching pipeline. This plan integrates it as a Django module while
+addressing image sizing, database storage, and 1-to-many matching requirements.
+
+---
+
+## Image Sizing Decision
+
+This is the most critical technical decision. Analysis was run on actual sensor/camera specs.
+
+### Sensor Physical Constraints
+- **Raw output**: 256×288 px (4-bit packed, 36864 bytes)
+- **After black-bar crop**: ~256×268 px (≈10-20 rows removed from top)
+- **Native aspect ratio**: ~0.955 : 1 (nearly square, slightly portrait)
+
+### The Problem with `SZ = (400, 500)` Direct Resize (v4's current approach)
+
+Running actual distortion analysis:
+
+| Source | After crop | Direct resize to 400×500 | scaleX | scaleY | Distortion |
+|--------|-----------|--------------------------|--------|--------|------------|
+| Sensor | 256×278 | 400×500 | 1.562 | 1.799 | **15.1%** |
+| Sensor | 256×268 | 400×500 | 1.562 | 1.866 | **19.4%** |
+| Camera (2:3) | 400×600 | 400×500 | 1.000 | 0.833 | **20.0%** |
+| Camera (3:4) | 600×800 | 400×500 | 0.667 | 0.625 | 6.7% |
+| Camera (square) | 500×500 | 400×500 | 0.800 | 1.000 | **25.0%** |
+
+**Verdict**: Direct non-uniform resize introduces 15–25% geometric distortion on sensor images.
+This shifts minutiae positions in the y-axis relative to x-axis, corrupting cross-sensor matching.
+
+### Three Candidate Approaches
+
+#### Approach A — Direct resize to shared SZ (current v4)
+- ❌ 15–25% geometric distortion on sensor (nearly square) → x/y scale mismatch
+- ❌ Minutiae (x,y) positions are incorrectly distorted
+- ✅ Both images land on identical canvas — ECC/TPS works directly
+- **Verdict: Rejected** for sensor images specifically
+
+#### Approach B — Different canvas per source, then pad to shared
+- Camera: aspect-preserve to its canvas → pad to shared
+- Sensor: aspect-preserve to its canvas → pad to shared
+- ✅ No distortion for either source
+- ✅ Both on same canvas for ECC/TPS matching
+- See fill rates below for canvas choice:
+
+| Canvas | Sensor fill | Camera(2:3) fill | Camera(1:1) fill |
+|--------|------------|-----------------|-----------------|
+| 400×400 | 95.5% | 66.5% | 100% |
+| **400×500** | **83.6%** | **83.2%** | 80.0% |
+| 500×500 | 95.4% | 66.6% | 100% |
+
+**400×500 gives the best balance** — both sensor (~84%) and typical portrait camera images
+(~83%) fill the canvas similarly, maximising the overlap region for matching.
+
+#### Approach C — Dynamic canvas per image pair (no fixed SZ)
+- ✅ Zero distortion, maximum content
+- ❌ Cannot store a fixed-size binary blob in the DB per student
+- ❌ ECC/TPS requires both images on identical canvas at match time (costly reprocess)
+- ❌ Cannot precompute orientation fields, skeletons at enrolment time
+- **Verdict: Rejected** — impractical for 1-to-many matching from DB
+
+### ✅ Final Decision: Approach B — Aspect-Preserving Resize + Pad to 400×500
+
+```
+SHARED_W, SHARED_H = 400, 500   # canvas (width, height)
+
+def _resize_to_canvas(img, w=SHARED_W, h=SHARED_H):
+    """
+    Aspect-preserving resize + mean-fill pad to exact canvas size.
+    Sensor (~square): fills ~84% vertically centred.
+    Camera (portrait): fills ~83% horizontally centred.
+    Zero geometric distortion for either source.
+    """
+    src_h, src_w = img.shape[:2]
+    scale = min(w / src_w, h / src_h)
+    new_w = max(1, int(src_w * scale))
+    new_h = max(1, int(src_h * scale))
+    resized = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
+    fill = int(np.mean(resized))
+    canvas = np.full((h, w), fill, dtype=resized.dtype)
+    x_off = (w - new_w) // 2
+    y_off = (h - new_h) // 2
+    canvas[y_off:y_off+new_h, x_off:x_off+new_w] = resized
+    return canvas
+```
+
+Max overlap between sensor and camera content in ECC alignment: **~70%** of the 400×500 canvas.
+This is well above the `OVERLAP_FAIL = 1.5%` gate in v4 — matching will proceed confidently.
+
+---
+
+## Data Storage Architecture
+
+> [!IMPORTANT]
+> The current pipeline stores only `fingerprint_image` (raw pixels) + `fingerprint_template`
+> (encrypted minutiae). The v4 matching pipeline registers the sensor probe image against
+> the stored enrolled image at match time — so we need the stored enrolled image to be
+> the binarised+normalised form, not the raw grayscale.
+
+### What must be stored per enrolled student
+
+To support 1-to-many matching at exam time:
+
+| Field | Content | Size |
+|-------|---------|------|
+| `fingerprint_image` | Processed binary-normalised image (400×500 uint8) | 200,000 bytes |
+| `fingerprint_template` | Encrypted serialised `FingerprintTemplate` (minutiae + singularities) | ~2–5 KB |
+| `fingerprint_hash` | SHA-256 of template bytes | 64 bytes |
+
+The `fingerprint_image` stores the **binarised + width-normalised** image (the `b1_norm` in v4
+terms), so at match time the sensor probe can be registered directly against it without
+re-running the full binarisation pipeline on the stored image.
+
+### DB Migration Required
+
+The `Student.fingerprint_image` field currently has `max_length=262144` (512×512).
+New size is 400×500 = 200,000 bytes — fits within existing max_length, but:
+
+- Old enrolled images are 512×512 → cannot be reshaped to 400×500 → **must be cleared**
+- A migration will add a `fingerprint_image_size` field to store `(H, W)` for future-proofing,
+  and will clear all existing `fingerprint_image` and `fingerprint_template` blobs
+
+```
+Migration actions:
+  1. Add Student.fingerprint_image_size = CharField(max_length=20, default='400x500')
+  2. Clear all existing fingerprint_image / fingerprint_template / fingerprint_hash data
+  3. Leave max_length=262144 (still fits 400x500 with headroom)
+```
+
+---
+
+## Proposed Changes
+
+### ─── Preprocessing ───────────────────────────────────────────────────────────
+
+#### [MODIFY] [pipeline.py](file:///f:/FingerPrint_sensor/fingerprint_project/fingerprint/preprocessing/pipeline.py)
+
+Complete rewrite. Imports v4's algorithmic functions as local helpers (not from minutiae_core).
+
+**Camera pipeline**:
+1. `detect_and_crop_fingerprint()` (region_detector — unchanged)
+2. Grayscale + `_resize_to_canvas(400, 500)` (aspect-preserving)
+3. Sauvola binarisation (v4's `binarise_camera`)
+4. Width normalisation via skeletonize + dilate (v4's `width_normalise`)
+5. Orientation field + coherence (v4's `orientation_field`)
+6. Oriented minutiae extraction (v4's `extract_oriented_minutiae`)
+7. Ridge frequency map (v4's `ridge_frequency_map`)
+8. Quality assessment (quality.py — unchanged)
+
+**Sensor pipeline**:
+1. Grayscale
+2. `_crop_sensor_black_top()` (existing — unchanged)
+3. `_mask_sensor_borders()` (existing — unchanged)
+4. `_resize_to_canvas(400, 500)` (aspect-preserving — replaces old `_resize_pad(512)`)
+5. Otsu binarisation (v4's `binarise_sensor`)
+6. Width normalisation (same as camera)
+7. Orientation field + coherence
+8. Oriented minutiae extraction
+9. Ridge frequency map
+10. Quality assessment
+
+**New `PreprocessingResult`**:
+```python
+class PreprocessingResult:
+    processed_image: np.ndarray     # binarised + width-normalised (400×500)
+    skeleton: np.ndarray            # 1-px wide skeleton (400×500)
+    orientation_field: np.ndarray   # OF map (rows, cols)
+    coherence: np.ndarray           # coherence map (rows, cols)
+    minutiae: list[dict]            # [{'x','y','type','angle'}]
+    ridge_freq_map: np.ndarray      # ridge frequency (rows, cols)
+    quality_result: QualityResult
+    steps_completed: list[str]
+    fill_ratio: float
+    image_size: tuple               # (400, 500) always
+```
+
+#### [DELETE] [minutiae_core.py](file:///f:/FingerPrint_sensor/fingerprint_project/fingerprint/preprocessing/minutiae_core.py)
+
+The entire old normalize→segment→orient→freq→gabor→skeletonize→crossing-number chain is
+replaced. All v4 algorithmic functions live in `pipeline.py` as private helpers.
+
+#### [KEEP unchanged] region_detector.py, quality.py, validator.py
+
+---
+
+### ─── Templates Engine ────────────────────────────────────────────────────────
+
+#### [MODIFY] [extractor.py](file:///f:/FingerPrint_sensor/fingerprint_project/fingerprint/templates_engine/extractor.py)
+
+Update `extract_template()` to accept the new `PreprocessingResult`:
+- Input minutiae are now `{'x','y','type','angle'}` dicts from v4
+- Keep `FingerprintTemplate` / `MinutiaePoint` serialisation format unchanged
+- Keep false-minutiae filtering logic (`_filter_minutiae`, `_compute_angles`)
+- Remove the internal `run_minutiae_pipeline()` call (no longer exists)
+- Standalone mode (no `PreprocessingResult`) runs the pipeline directly
+
+#### [MODIFY] [matcher.py](file:///f:/FingerPrint_sensor/fingerprint_project/fingerprint/templates_engine/matcher.py)
+
+Complete rewrite to implement v4's registration + scoring pipeline:
+
+**`match_fingerprints(probe_result, stored_image, stored_template)` flow**:
+1. **Rotation estimate** — weighted circular mean of orientation field (v4 Stage 2)
+2. **Scale estimate** — ridge frequency ratio cam/sensor (v4 Stage 3)
+3. **Poincaré core detection** — 3-level fallback chain (v4 Stage 4)
+4. **Geometric pre-alignment** — affine from rot + scale + anchor (v4 Stage 5)
+5. **ECC affine refinement** — `cv2.findTransformECC` (v4 Stage 6)
+6. **TPS warp** — if ≥50 matched minutiae pairs (v4 Stage 7)
+7. **Aligned minutiae extraction** on warped sensor (v4 Stage 8)
+8. **Scoring fusion**:
+   - Minutiae proximity: 35%
+   - Minutiae descriptors: 35%
+   - Ridge frequency correlation: 20%
+   - Ridge orientation correlation: 10%
+9. **Alignment quality gate** (overlap < 1.5% → reject)
+10. Return `MatchResult` with score, verdict, confidence, alignment level
+
+`MatchResult` keeps the same public interface (`score`, `is_match`, `interpretation`).
+
+---
+
+### ─── Database Migration ──────────────────────────────────────────────────────
+
+#### [NEW] migrations/000X_v4_pipeline_reset.py
+
+```python
+# Pseudocode — actual Django migration
+operations = [
+    # Add image_size tracking field
+    migrations.AddField('Student', 'fingerprint_image_size',
+        models.CharField(max_length=20, default='400x500', blank=True)),
+    # Clear all stale enrolled fingerprint data
+    migrations.RunSQL(
+        "UPDATE students SET fingerprint_image=NULL, "
+        "fingerprint_template='', fingerprint_hash='', "
+        "fingerprint_image_size='' WHERE fingerprint_image IS NOT NULL"
+    ),
+]
+```
+
+---
+
+### ─── Views ──────────────────────────────────────────────────────────────────
+
+#### [MODIFY] [views.py](file:///f:/FingerPrint_sensor/fingerprint_project/fingerprint/views.py)
+
+**`fingerprint_upload` (enrolment)**:
+- Call `preprocess_camera_image()` → get `PreprocessingResult`
+- Call `extract_template(result)` → get `FingerprintTemplate`
+- Store `result.processed_image.tobytes()` as `fingerprint_image` (200 KB)
+- Store `encrypt_template(template.serialize())` as `fingerprint_template`
+- Store `result.image_size` as `fingerprint_image_size`
+- Save pipeline grid using v4 stages (binarise, skeleton, orientation, minutiae)
+
+**`sensor_capture` (1-to-many matching)**:
+- Call `preprocess_sensor_image()` → get `PreprocessingResult` for probe
+- For each enrolled student with a stored image:
+  - Reshape stored bytes using `student.fingerprint_image_size` (not hardcoded `(512,512)`)
+  - Decrypt and deserialize `fingerprint_template`
+  - Call new `match_fingerprints(probe_result, stored_image, stored_template)`
+  - Track best score + student
+- Return matched student or no-match
+
+**`_match_against_enrolled` update**:
+```python
+# Dynamic reshape using stored size field
+size_str = student.fingerprint_image_size or '400x500'
+h, w = map(int, size_str.split('x'))
+stored_image = np.frombuffer(...).reshape((h, w))
+```
+
+**`_save_pipeline_grid` update**:
+- Replaced with v4-style 8-panel grid:
+  - Row 0: original cam, cam binary, original sensor, sensor binary
+  - Row 1: cam normalised, sensor pre-align, geo-align, final overlay
+  - (or simplified 4-panel for speed)
+
+---
+
+## Summary of Files Changed
+
+| File | Action | Reason |
+|------|--------|--------|
+| `preprocessing/pipeline.py` | **Rewrite** | v4 binarise + width-norm + OF + minutiae |
+| `preprocessing/minutiae_core.py` | **Delete** | Replaced entirely by v4 approach |
+| `preprocessing/region_detector.py` | Keep | Camera crop still needed |
+| `preprocessing/quality.py` | Keep | Independent of pipeline |
+| `preprocessing/validator.py` | Keep | Independent of pipeline |
+| `templates_engine/extractor.py` | **Modify** | Adapt to new minutiae dict format |
+| `templates_engine/matcher.py` | **Rewrite** | v4 registration + fusion scoring |
+| `fingerprint/views.py` | **Modify** | New data flow, dynamic reshape, grid update |
+| `fingerprint/models.py` | **Modify** | Add `fingerprint_image_size` field |
+| `migrations/` | **New migration** | Add field + clear stale enrolled data |
+
+---
+
+## Verification Plan
+
+### Automated
+```
+python manage.py check
+python manage.py migrate
+python manage.py runserver  # verify no import errors
+```
+
+### Endpoint Tests
+1. `POST /api/fingerprint/upload/` with a camera photo → expect `201 Created`, `minutiae_count > 5`
+2. `POST /api/fingerprint/sensor-capture/` with sensor binary → expect match or no-match
+3. `GET /api/students/<id>/` → verify `fingerprint_image_size = '400x500'` stored correctly
+4. Inspect `captured_fingerprints/` directory — pipeline grid images should show v4 stages
+
+### Re-enrollment Required
+All existing students must re-enroll their fingerprints after the migration runs.

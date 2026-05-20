@@ -155,9 +155,15 @@ def run_test(image_path, student_id=None, is_raw_sensor=False, pipeline_mode='ca
             continue
 
         try:
+            size_str = getattr(student, 'fingerprint_image_size', None) or '400x500'
+            try:
+                sw, sh = map(int, size_str.split('x'))
+            except ValueError:
+                sw, sh = 400, 500
+
             stored_image = np.frombuffer(
                 bytes(student.fingerprint_image), dtype=np.uint8
-            ).reshape((512, 512))
+            ).reshape((sh, sw))
 
             match_res = match_fingerprints(
                 processed_image, stored_image, method='combined',
@@ -235,9 +241,15 @@ def run_self_test():
 
     for student in students[:3]:  # Test first 3 students
         try:
+            size_str = getattr(student, 'fingerprint_image_size', None) or '400x500'
+            try:
+                sw, sh = map(int, size_str.split('x'))
+            except ValueError:
+                sw, sh = 400, 500
+
             stored_image = np.frombuffer(
                 bytes(student.fingerprint_image), dtype=np.uint8
-            ).reshape((512, 512))
+            ).reshape((sh, sw))
 
             # Match the stored image directly against itself (no re-preprocessing)
             result = match_fingerprints(stored_image, stored_image, method='combined')

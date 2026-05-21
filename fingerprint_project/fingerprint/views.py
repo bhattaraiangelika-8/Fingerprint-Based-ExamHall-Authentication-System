@@ -21,9 +21,11 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
-from .models import Student, MedicalForm
+from .models import Student, MedicalForm, RegistrationDocument, ExamSession, AttendanceRecord, SeatAssignment
 from .serializers import (
     StudentSerializer,
+    StudentDetailSerializer,
+    StudentUpdateSerializer,
     StudentCreateSerializer,
     FingerprintUploadSerializer,
     MatchRequestSerializer,
@@ -77,7 +79,7 @@ def _save_pipeline_grid(original_image, minutiae_data, prefix, identifier=''):
         
     def to_bgr(img):
         if img is None:
-            return np.zeros((512, 512, 3), dtype=np.uint8)
+            return np.zeros((500, 400, 3), dtype=np.uint8)
         if len(img.shape) == 2:
             return cv2.cvtColor(img.astype(np.uint8), cv2.COLOR_GRAY2BGR)
         return img.astype(np.uint8)
@@ -86,17 +88,18 @@ def _save_pipeline_grid(original_image, minutiae_data, prefix, identifier=''):
     img2 = to_bgr(minutiae_data.get('normalized_img'))
     img3 = to_bgr(minutiae_data.get('segmented_img'))
     img4 = to_bgr(minutiae_data.get('orientation_img'))
-    
+
     img5 = to_bgr(minutiae_data.get('gabor_img'))
     img6 = to_bgr(minutiae_data.get('thin_image'))
     img7 = to_bgr(minutiae_data.get('minutias_img'))
     img8 = to_bgr(minutiae_data.get('singularities_img'))
-    
-    # Ensure all images are exactly 512x512
+
+    # Ensure all images match the configured normalized size
+    normalized_size = settings.FINGERPRINT['NORMALIZED_SIZE']
     imgs = [img1, img2, img3, img4, img5, img6, img7, img8]
     for i in range(len(imgs)):
-        if imgs[i].shape[:2] != (512, 512):
-            imgs[i] = cv2.resize(imgs[i], (512, 512))
+        if imgs[i].shape[:2] != (normalized_size[1], normalized_size[0]):
+            imgs[i] = cv2.resize(imgs[i], (normalized_size[0], normalized_size[1]))
             
     row1 = np.hstack(imgs[0:4])
     row2 = np.hstack(imgs[4:8])
@@ -300,6 +303,48 @@ def sensor_capture(request):
             response_data['student_id'] = student.student_id
             response_data['registration_no'] = student.registration_no
             response_data['full_name'] = student.full_name
+
+            # ── Resolve active exam session ──
+            try:
+                active = ExamSession.objects.get(is_active=True, ended_at__isnull=True)
+            except ExamSession.DoesNotExist:
+                active = None
+
+            response_data['entry_granted'] = False
+            response_data['entry_state'] = 'NO_ACTIVE_EXAM'
+            response_data['hall_name'] = ''
+            response_data['seat_label'] = ''
+            response_data['exam_name'] = ''
+
+            if active:
+                exam = active.exam
+                response_data['exam_name'] = str(exam)
+                seat = SeatAssignment.objects.filter(
+                    student=student, exam=exam
+                ).first()
+                response_data['hall_name'] = seat.hall.name if seat and seat.hall else ''
+                response_data['seat_label'] = seat.seat_label if seat else ''
+
+                if not exam.enrolled_students.filter(student_id=student.student_id).exists():
+                    response_data['entry_state'] = 'DENIED'
+                else:
+                    already = AttendanceRecord.objects.filter(
+                        student=student, exam=exam,
+                        entry_state__in=['GRANTED', 'FALLBACK_GRANTED'],
+                    ).exists()
+                    entry_state = 'ALREADY_ENTERED' if already else 'GRANTED'
+                    response_data['entry_state'] = entry_state
+                    response_data['entry_granted'] = entry_state == 'GRANTED'
+
+                    AttendanceRecord.objects.create(
+                        student=student,
+                        exam=exam,
+                        hall=seat.hall if seat else None,
+                        entry_state=entry_state,
+                        method='fingerprint',
+                        match_score=round(match_result.score, 2) if match_result else 0,
+                    )
+
         except Student.DoesNotExist:
             response_data['validated'] = False
 
@@ -341,9 +386,10 @@ def _match_against_enrolled(probe_image, probe_minutiae_data=None):
 
         try:
             # Use stored preprocessed image directly for matching
+            normalized_size = settings.FINGERPRINT['NORMALIZED_SIZE']
             stored_image = np.frombuffer(
                 bytes(student.fingerprint_image), dtype=np.uint8
-            ).reshape((512, 512))
+            ).reshape((normalized_size[1], normalized_size[0]))
 
             # Decrypt stored template
             try:
@@ -472,9 +518,10 @@ def fingerprint_match(request):
 
         try:
             # Use stored preprocessed image directly for matching
+            normalized_size = settings.FINGERPRINT['NORMALIZED_SIZE']
             stored_image = np.frombuffer(
                 bytes(student.fingerprint_image), dtype=np.uint8
-            ).reshape((512, 512))
+            ).reshape((normalized_size[1], normalized_size[0]))
 
             # Decrypt stored template
             try:
@@ -567,13 +614,20 @@ class StudentListCreateView(generics.ListCreateAPIView):
 
 class StudentDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
-    GET /api/students/<id>/ — Get student details
+    GET /api/students/<id>/ — Get student details (with images & documents)
     PUT /api/students/<id>/ — Update student
     DELETE /api/students/<id>/ — Delete student
     """
     queryset = Student.objects.all()
     serializer_class = StudentSerializer
     lookup_field = 'student_id'
+
+    def get_serializer_class(self):
+        if self.request.method == 'GET':
+            return StudentDetailSerializer
+        elif self.request.method in ('PUT', 'PATCH'):
+            return StudentUpdateSerializer
+        return StudentSerializer
 
 
 # ──────────────────────────────────────────────
@@ -620,3 +674,28 @@ def medical_form_upload(request):
         'form_id': medical_form.form_id,
         'student_id': student_id,
     }, status=status.HTTP_201_CREATED)
+
+
+# ──────────────────────────────────────────────
+# Document Download
+# ──────────────────────────────────────────────
+
+@api_view(['GET'])
+def document_download(request, doc_id):
+    """GET /api/documents/<doc_id>/download/ — Download a registration document."""
+    try:
+        doc = RegistrationDocument.objects.get(doc_id=doc_id)
+    except RegistrationDocument.DoesNotExist:
+        return Response({'error': 'Document not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    from django.http import HttpResponse
+    content_type = 'application/octet-stream'
+    if doc.file_name:
+        ext = doc.file_name.lower().split('.')[-1]
+        content_type_map = {'pdf': 'application/pdf', 'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg'}
+        content_type = content_type_map.get(ext, 'application/octet-stream')
+
+    response = HttpResponse(bytes(doc.file_data), content_type=content_type)
+    response['Content-Disposition'] = f'attachment; filename="{doc.file_name or f"document_{doc.doc_id}"}"'
+    response['Content-Length'] = len(doc.file_data)
+    return response

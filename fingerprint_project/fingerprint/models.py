@@ -342,3 +342,27 @@ class AuditLog(models.Model):
     def __str__(self):
         return f"{self.action} by {self.user} @ {self.timestamp}"
 
+
+class ExamSession(models.Model):
+    """Represents an active on-the-day exam session started by an admin."""
+
+    session_id = models.AutoField(primary_key=True)
+    exam = models.ForeignKey(
+        Exam,
+        on_delete=models.CASCADE,
+        related_name='sessions',
+        db_column='exam_id',
+    )
+    started_by = models.CharField(max_length=150)
+    started_at = models.DateTimeField(auto_now_add=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'exam_sessions'
+        ordering = ['-started_at']
+
+    def __str__(self):
+        status = 'active' if self.is_active else 'ended'
+        return f"{self.exam} ({status})"
+

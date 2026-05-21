@@ -21,9 +21,11 @@ import cv2
 import numpy as np
 import logging
 
+from django.conf import settings
 from .region_detector import detect_and_crop_fingerprint
 from .quality import assess_quality
 from .minutiae_core import run_minutiae_pipeline
+from .normalizer import resize_with_padding
 
 logger = logging.getLogger('fingerprint')
 
@@ -108,7 +110,7 @@ def preprocess_camera_image(image_array):
 
     Pipeline:
         1. Region detection & crop
-        2. Convert to grayscale + resize to 512×512
+        2. Convert to grayscale + resize to target with padding
         3. Run full minutiae extraction pipeline
            (normalize → segment → orientation → frequency
             → gabor → skeletonize → crossing number → poincaré)
@@ -127,14 +129,15 @@ def preprocess_camera_image(image_array):
     cropped = detect_and_crop_fingerprint(image_array)
     steps.append('region_detection')
 
-    # 2. Convert to grayscale and resize
-    logger.info("Camera Step 2: Grayscale + resize to 512x512")
+    # 2. Convert to grayscale and resize with aspect-ratio padding
+    target_size = settings.FINGERPRINT['NORMALIZED_SIZE']
+    logger.info("Camera Step 2: Grayscale + resize to %dx%d with padding", target_size[0], target_size[1])
     if len(cropped.shape) == 3:
         gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
     else:
         gray = cropped.copy()
-    resized = cv2.resize(gray, (512, 512), interpolation=cv2.INTER_CUBIC)
-    steps.append('resize_512')
+    resized = resize_with_padding(gray, target_size)
+    steps.append('resize_padded')
 
     # 3. Run full minutiae extraction pipeline
     logger.info("Camera Step 3: Running minutiae extraction pipeline...")
@@ -170,7 +173,7 @@ def preprocess_sensor_image(image_array):
         1. Convert to grayscale
         2. Crop black bar artifact (AS608 top-row artifact)
         3. Mask noisy border columns
-        4. Resize to 512×512
+        4. Resize to target with padding
         5. Run full minutiae extraction pipeline
         6. Quality assessment
 
@@ -196,10 +199,11 @@ def preprocess_sensor_image(image_array):
     image_array = _mask_sensor_borders(image_array, border_px=8)
     steps.append('border_mask')
 
-    # 4. Resize to standard resolution
-    logger.info("Sensor Step 3: Resize to 512x512")
-    resized = cv2.resize(image_array, (512, 512), interpolation=cv2.INTER_CUBIC)
-    steps.append('resize_512')
+    # 4. Resize to standard resolution with aspect-ratio padding
+    target_size = settings.FINGERPRINT['NORMALIZED_SIZE']
+    logger.info("Sensor Step 3: Resize to %dx%d with padding", target_size[0], target_size[1])
+    resized = resize_with_padding(image_array, target_size)
+    steps.append('resize_padded')
 
     # 5. Run full minutiae extraction pipeline
     logger.info("Sensor Step 4: Running minutiae extraction pipeline...")

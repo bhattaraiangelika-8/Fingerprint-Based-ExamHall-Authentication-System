@@ -5,8 +5,13 @@ import base64
 from rest_framework import serializers
 from .models import (
     Student, Subject, ExamCenter, Hall, Exam,
-    SeatAssignment, RegistrationDocument, AttendanceRecord, AuditLog, MedicalForm
+    SeatAssignment, RegistrationDocument, AttendanceRecord, AuditLog, MedicalForm,
+    ExamSession,
 )
+from django.conf import settings
+import numpy as np
+from PIL import Image
+import io
 
 
 # ── Subject ──
@@ -68,12 +73,102 @@ class StudentSerializer(serializers.ModelSerializer):
         return instance
 
 
+class StudentDetailSerializer(StudentSerializer):
+    photo_base64 = serializers.SerializerMethodField()
+    fingerprint_image_base64 = serializers.SerializerMethodField()
+    documents = serializers.SerializerMethodField()
+    enrolled_exams = serializers.SerializerMethodField()
+
+    class Meta(StudentSerializer.Meta):
+        fields = StudentSerializer.Meta.fields + [
+            'photo_base64', 'fingerprint_image_base64', 'documents', 'enrolled_exams',
+        ]
+
+    def get_photo_base64(self, obj):
+        if not obj.photo:
+            return None
+        try:
+            data = base64.b64encode(bytes(obj.photo)).decode('utf-8')
+            return f'data:image/jpeg;base64,{data}'
+        except Exception:
+            return None
+
+    def get_fingerprint_image_base64(self, obj):
+        if not obj.fingerprint_image:
+            return None
+        try:
+            normalized_size = settings.FINGERPRINT['NORMALIZED_SIZE']
+            arr = np.frombuffer(bytes(obj.fingerprint_image), dtype=np.uint8).reshape((normalized_size[1], normalized_size[0]))
+            img = Image.fromarray(arr, mode='L')
+            buf = io.BytesIO()
+            img.save(buf, format='PNG')
+            data = base64.b64encode(buf.getvalue()).decode('utf-8')
+            return f'data:image/png;base64,{data}'
+        except Exception:
+            return None
+
+    def get_documents(self, obj):
+        docs = obj.documents.all()
+        return [{
+            'doc_id': d.doc_id,
+            'document_type': d.document_type,
+            'file_name': d.file_name,
+            'file_size': d.file_size,
+            'verification_status': d.verification_status,
+            'uploaded_at': d.uploaded_at,
+        } for d in docs]
+
+    def get_enrolled_exams(self, obj):
+        exams = obj.exams.all().select_related('subject')
+        return [{
+            'exam_id': e.exam_id,
+            'subject_name': e.subject.name,
+            'date': e.date,
+            'start_time': str(e.start_time),
+        } for e in exams]
+
+
+class StudentUpdateSerializer(serializers.ModelSerializer):
+    photo = serializers.ImageField(required=False)
+    subject_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True, required=False)
+    exam_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True, required=False)
+
+    class Meta:
+        model = Student
+        fields = [
+            'registration_no', 'full_name', 'date_of_birth',
+            'gender', 'college_name', 'email', 'phone',
+            'special_needs', 'special_needs_notes',
+            'subject_ids', 'exam_ids', 'photo',
+        ]
+
+    def update(self, instance, validated_data):
+        subject_ids = validated_data.pop('subject_ids', None)
+        exam_ids = validated_data.pop('exam_ids', None)
+        photo_file = validated_data.pop('photo', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        if photo_file:
+            instance.photo = photo_file.read()
+        if subject_ids is not None:
+            subjects = Subject.objects.filter(subject_id__in=subject_ids)
+            instance.subjects.set(subjects)
+        if exam_ids is not None:
+            exam_ids = [e for e in exam_ids if e != '']
+            exams = Exam.objects.filter(exam_id__in=exam_ids)
+            instance.exams.set(exams)
+        instance.save()
+        return instance
+
+
 # ── Phase 1: Registration ──
 
 class RegistrationSerializer(serializers.ModelSerializer):
     photo = serializers.ImageField(required=False)
     fingerprint_image = serializers.ImageField(required=False)
     subject_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True, required=False)
+    exam_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True, required=False)
+    document = serializers.FileField(required=False)
 
     class Meta:
         model = Student
@@ -82,11 +177,13 @@ class RegistrationSerializer(serializers.ModelSerializer):
             'gender', 'college_name', 'email', 'phone',
             'photo', 'fingerprint_image', 'consent_signed',
             'special_needs', 'special_needs_notes',
-            'subject_ids',
+            'subject_ids', 'exam_ids', 'document',
         ]
 
     def create(self, validated_data):
         subject_ids = validated_data.pop('subject_ids', [])
+        exam_ids = validated_data.pop('exam_ids', [])
+        document_file = validated_data.pop('document', None)
         fingerprint_image = validated_data.pop('fingerprint_image', None)
         photo = validated_data.pop('photo', None)
 
@@ -94,9 +191,25 @@ class RegistrationSerializer(serializers.ModelSerializer):
             validated_data['fingerprint_image'] = fingerprint_image.read()
 
         student = Student.objects.create(**validated_data)
+
         if subject_ids:
             subjects = Subject.objects.filter(subject_id__in=subject_ids)
             student.subjects.set(subjects)
+
+        if exam_ids:
+            exams = Exam.objects.filter(exam_id__in=exam_ids)
+            student.exams.set(exams)
+
+        if document_file:
+            file_bytes = document_file.read()
+            RegistrationDocument.objects.create(
+                student=student,
+                document_type=RegistrationDocument.DocumentType.GOVT_ID,
+                file_data=file_bytes,
+                file_name=getattr(document_file, 'name', 'document'),
+                file_size=len(file_bytes),
+            )
+
         return student
 
 
@@ -270,6 +383,32 @@ class AttendanceRecordSerializer(serializers.ModelSerializer):
         fields = ['record_id', 'student_id', 'student_name', 'registration_no',
                   'exam_id', 'exam_subject', 'hall_id', 'hall_name',
                   'entry_state', 'entry_time', 'method', 'match_score', 'notes', 'verified_by']
+
+
+# ── Phase 4: Exam Sessions ──
+
+class ExamSessionSerializer(serializers.ModelSerializer):
+    exam_name = serializers.CharField(source='exam.__str__', read_only=True)
+    subject_name = serializers.CharField(source='exam.subject.name', read_only=True)
+    exam_date = serializers.DateField(source='exam.date', read_only=True)
+    entry_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ExamSession
+        fields = ['session_id', 'exam_id', 'exam_name', 'subject_name', 'exam_date',
+                  'started_by', 'started_at', 'ended_at', 'is_active', 'entry_count']
+        read_only_fields = ['session_id', 'started_at', 'ended_at', 'is_active']
+
+    def get_entry_count(self, obj):
+        from django.db.models import Count
+        if obj.is_active:
+            return AttendanceRecord.objects.filter(exam=obj.exam).count()
+        return None
+
+
+class StartSessionSerializer(serializers.Serializer):
+    exam_id = serializers.IntegerField()
+    started_by = serializers.CharField(max_length=150)
 
 
 # ── Phase 3: Analytics ──

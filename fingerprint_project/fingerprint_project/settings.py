@@ -136,7 +136,8 @@ FINGERPRINT = {
     'MIN_IMAGE_WIDTH': 800,
     'MIN_IMAGE_HEIGHT': 800,
     'MAX_FILE_SIZE_MB': 10,
-    'NORMALIZED_SIZE': (512, 512),
+    'NORMALIZED_SIZE': (400, 500),     # (width, height) - non-square for aspect-ratio preservation
+    'PADDING_COLOR': 'white',          # 'white' or 'mean' — padding fill for aspect-ratio resize
     'ACCEPTED_FORMATS': ['JPEG', 'PNG'],
     'MATCH_THRESHOLD': 30,
     'QUALITY_THRESHOLD': 40,

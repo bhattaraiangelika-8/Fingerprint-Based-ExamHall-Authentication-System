@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Student, Subject, ExamCenter, Hall, Exam, SeatAssignment, RegistrationDocument, AttendanceRecord, AuditLog, MedicalForm
+from .models import Student, Subject, ExamCenter, Hall, Exam, SeatAssignment, RegistrationDocument, AttendanceRecord, AuditLog, MedicalForm, ExamSession
 
 
 @admin.register(Student)
@@ -58,6 +58,15 @@ class AuditLogAdmin(admin.ModelAdmin):
     list_display = ['log_id', 'user', 'action', 'timestamp']
     list_filter = ['action', 'timestamp']
     readonly_fields = ['log_id', 'user', 'action', 'target_type', 'target_id', 'details', 'notes', 'ip_address', 'timestamp']
+
+
+@admin.register(ExamSession)
+class ExamSessionAdmin(admin.ModelAdmin):
+    list_display = ['session_id', 'exam', 'started_by', 'started_at', 'ended_at', 'is_active']
+    list_filter = ['is_active', 'started_at']
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(MedicalForm)

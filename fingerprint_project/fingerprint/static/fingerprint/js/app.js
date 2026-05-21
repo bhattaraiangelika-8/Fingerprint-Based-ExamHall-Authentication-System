@@ -82,10 +82,12 @@ const Router = {
       n.setAttribute('aria-current', n.dataset.page === page ? 'page' : 'false');
     });
     this.current = page;
+    if (page === 'register') Register.loadExams();
     if (page === 'students') Students.load();
     if (page === 'admin') Admin.load();
     if (page === 'exams') ExamManager.load();
     if (page === 'seats') SeatManager.load();
+    if (page === 'sessions') SessionsManager.load();
     if (page === 'reports') ReportManager.load();
     document.getElementById('sidebar').classList.remove('open');
   },
@@ -108,6 +110,28 @@ const Register = {
     zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
     zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag-over'); const file = e.dataTransfer.files[0]; if (file && file.type.startsWith('image/')) { input.files = e.dataTransfer.files; this.previewPhoto(file); } });
     document.getElementById('go-enroll-btn').addEventListener('click', () => { if (this.lastStudentId) { document.getElementById('enroll-student-id').value = this.lastStudentId; Enroll.lookupStudent(this.lastStudentId); } Router.navigate('enroll'); });
+    // Document upload zone
+    const docZone = document.getElementById('doc-upload-zone');
+    const docInput = document.getElementById('reg-document');
+    if (docZone && docInput) {
+      docZone.addEventListener('click', () => docInput.click());
+      docZone.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') docInput.click(); });
+      docInput.addEventListener('change', function() {
+        const placeholder = document.getElementById('doc-placeholder');
+        if (this.files && this.files[0]) {
+          placeholder.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:32px;height:32px"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span>${escHtml(this.files[0].name)}</span>`;
+        }
+      });
+    }
+    this.loadExams();
+  },
+  async loadExams() {
+    try {
+      const data = await API.get('/exams/');
+      const sel = document.getElementById('reg-exams');
+      if (!sel) return;
+      sel.innerHTML = data.map(e => `<option value="${e.exam_id}">${escHtml(e.subject_name||'')} — ${e.date||''} (${e.start_time||''})</option>`).join('');
+    } catch { /* exams not available yet */ }
   },
   previewPhoto(file) { if (!file) return; const reader = new FileReader(); reader.onload = e => { const img = document.getElementById('photo-preview-img'); const placeholder = document.getElementById('photo-placeholder'); img.src = e.target.result; img.classList.remove('hidden'); placeholder.style.display = 'none'; }; reader.readAsDataURL(file); },
   clearErrors() { document.querySelectorAll('.field-error').forEach(e => e.textContent = ''); document.querySelectorAll('.form-input.error').forEach(e => e.classList.remove('error')); },
@@ -127,6 +151,8 @@ const Register = {
       document.getElementById('register-form').reset();
       document.getElementById('photo-preview-img').classList.add('hidden');
       document.getElementById('photo-placeholder').style.display = '';
+      const docPlaceholder = document.getElementById('doc-placeholder');
+      if (docPlaceholder) docPlaceholder.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:32px;height:32px"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg><span>Upload ID / Document</span>';
     } catch (err) { Toast.show(err.message || 'Registration failed', 'error'); }
     finally { btn.classList.remove('loading'); btn.disabled = false; }
   },
@@ -210,6 +236,8 @@ function formatScore(val) { return (val === undefined || val === null) ? '—' :
    ═══════════════════════════════════════════ */
 const Students = {
   all: [], filtered: [], modalStudentId: null,
+  _studentData: null,
+
   init() {
     document.getElementById('refresh-students-btn').addEventListener('click', () => this.load());
     document.getElementById('student-search').addEventListener('input', e => this.filter(e.target.value));
@@ -218,6 +246,23 @@ const Students = {
     document.addEventListener('keydown', e => { if (e.key === 'Escape') this.closeModal(); });
     document.getElementById('modal-enroll-btn').addEventListener('click', () => { if (this.modalStudentId) { document.getElementById('enroll-student-id').value = this.modalStudentId; Enroll.lookupStudent(this.modalStudentId); this.closeModal(); Router.navigate('enroll'); } });
     document.getElementById('modal-delete-btn').addEventListener('click', () => { if (this.modalStudentId) this.deleteStudent(this.modalStudentId); });
+    document.getElementById('modal-edit-btn').addEventListener('click', () => this.enterEditMode());
+    document.getElementById('modal-cancel-btn').addEventListener('click', () => this.cancelEdit());
+    document.getElementById('modal-save-btn').addEventListener('click', () => this.saveEdit());
+    document.getElementById('edit-photo-btn').addEventListener('click', () => document.getElementById('edit-photo-input').click());
+    document.getElementById('edit-photo-input').addEventListener('change', function() {
+      const file = this.files && this.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = e => {
+        const img = document.getElementById('edit-avatar');
+        img.style.backgroundImage = `url(${e.target.result})`;
+        img.style.backgroundSize = 'cover';
+        img.style.backgroundPosition = 'center';
+        img.textContent = '';
+      };
+      reader.readAsDataURL(file);
+    });
   },
   async load() {
     const grid = document.getElementById('student-grid'); const loading = document.getElementById('students-loading'); const empty = document.getElementById('students-empty');
@@ -256,10 +301,27 @@ const Students = {
   },
   openModal(s) {
     this.modalStudentId = s.student_id;
+    this._studentData = null;
+    document.getElementById('modal-view').classList.remove('hidden');
+    document.getElementById('modal-edit').classList.add('hidden');
+
+    // Show initial data from list
+    this._populateView(s);
+    document.getElementById('modal-overlay').classList.remove('hidden');
+    document.getElementById('modal-close').focus();
+
+    // Fetch full details
+    this._fetchDetail(s.student_id);
+  },
+
+  _populateView(s) {
     const initials = (s.full_name||'?').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
     document.getElementById('modal-avatar').textContent = initials;
+    document.getElementById('modal-photo-img').classList.add('hidden');
+    document.getElementById('modal-photo-img').src = '';
     document.getElementById('modal-title').textContent = s.full_name||'—';
     document.getElementById('modal-reg').textContent = s.registration_no||'—';
+    document.getElementById('modal-meta').textContent = s.college_name ? `College: ${s.college_name}` : '';
     document.getElementById('md-dob').textContent = s.date_of_birth||'—';
     document.getElementById('md-gender').textContent = s.gender||'—';
     document.getElementById('md-college').textContent = s.college_name||'—';
@@ -269,10 +331,154 @@ const Students = {
     document.getElementById('md-id').textContent = s.student_id;
     document.getElementById('md-consent').textContent = s.consent_signed ? 'Signed' : 'Not signed';
     document.getElementById('modal-badge').innerHTML = `<span class="card-badge ${s.status==='APPROVED'?'enrolled':'pending'}">${s.status||'—'}</span>`;
-    document.getElementById('modal-overlay').classList.remove('hidden');
-    document.getElementById('modal-close').focus();
+    // Reset fingerprint, exams & docs
+    document.getElementById('modal-fingerprint-empty').classList.remove('hidden');
+    document.getElementById('modal-fingerprint-loaded').classList.add('hidden');
+    document.getElementById('modal-exams-empty').classList.remove('hidden');
+    document.getElementById('modal-exams-list').classList.add('hidden');
+    document.getElementById('modal-documents-empty').classList.remove('hidden');
+    document.getElementById('modal-documents-list').classList.add('hidden');
   },
-  closeModal() { document.getElementById('modal-overlay').classList.add('hidden'); this.modalStudentId = null; },
+
+  async _fetchDetail(id) {
+    try {
+      const data = await API.get(`/students/${id}/`);
+      this._studentData = data;
+
+      // Photo
+      if (data.photo_base64) {
+        document.getElementById('modal-photo-img').src = data.photo_base64;
+        document.getElementById('modal-photo-img').classList.remove('hidden');
+        document.getElementById('modal-avatar').classList.add('hidden');
+      }
+
+      // Fingerprint
+      if (data.fingerprint_image_base64) {
+        document.getElementById('modal-fingerprint-img').src = data.fingerprint_image_base64;
+        document.getElementById('modal-fingerprint-empty').classList.add('hidden');
+        document.getElementById('modal-fingerprint-loaded').classList.remove('hidden');
+      }
+
+      // Enrolled exams
+      const exams = data.enrolled_exams || [];
+      if (exams.length > 0) {
+        document.getElementById('modal-exams-empty').classList.add('hidden');
+        const list = document.getElementById('modal-exams-list');
+        list.classList.remove('hidden');
+        list.innerHTML = exams.map(e => {
+          return `<div class="doc-item">
+            <svg class="doc-item-icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z"/></svg>
+            <div class="doc-item-info"><div class="doc-item-name">${escHtml(e.subject_name)}</div><div class="doc-item-meta">${e.date} at ${e.start_time}</div></div>
+          </div>`;
+        }).join('');
+      }
+
+      // Documents
+      const docs = data.documents || [];
+      if (docs.length > 0) {
+        document.getElementById('modal-documents-empty').classList.add('hidden');
+        const list = document.getElementById('modal-documents-list');
+        list.classList.remove('hidden');
+        list.innerHTML = docs.map(d => {
+          const icon = d.document_type === 'PDF' ? 'pdf' : 'doc';
+          const size = d.file_size ? `${(d.file_size / 1024).toFixed(1)} KB` : '';
+          return `<div class="doc-item">
+            <svg class="doc-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+            <div class="doc-item-info"><div class="doc-item-name">${escHtml(d.file_name || `Document #${d.doc_id}`)}</div><div class="doc-item-meta">${escHtml(d.document_type)}${size ? ' · ' + size : ''} · ${d.uploaded_at ? new Date(d.uploaded_at).toLocaleDateString() : ''}</div></div>
+            <a href="/api/documents/${d.doc_id}/download/" class="btn btn-ghost" style="font-size:.8rem;padding:6px 12px" download>Download</a>
+          </div>`;
+        }).join('');
+      }
+    } catch { /* detail fetch failed, keep basic info */ }
+  },
+
+  closeModal() {
+    document.getElementById('modal-overlay').classList.add('hidden');
+    document.getElementById('modal-view').classList.remove('hidden');
+    document.getElementById('modal-edit').classList.add('hidden');
+    this.modalStudentId = null;
+    this._studentData = null;
+  },
+
+  async enterEditMode() {
+    const s = this._studentData;
+    if (!s) { Toast.show('Still loading data...', 'info'); return; }
+    const initials = (s.full_name||'?').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+    document.getElementById('edit-avatar').textContent = initials;
+    document.getElementById('edit-avatar').style.backgroundImage = '';
+    document.getElementById('edit-full-name').value = s.full_name||'';
+    document.getElementById('edit-reg-no').value = s.registration_no||'';
+    document.getElementById('edit-dob').value = s.date_of_birth||'';
+    document.getElementById('edit-gender').value = s.gender||'';
+    document.getElementById('edit-college').value = s.college_name||'';
+    document.getElementById('edit-email').value = s.email||'';
+    document.getElementById('edit-phone').value = s.phone||'';
+    document.getElementById('edit-special-needs').value = s.special_needs ? 'true' : 'false';
+    document.getElementById('edit-special-notes').value = s.special_needs_notes||'';
+    document.getElementById('edit-badge').innerHTML = `<span class="card-badge ${s.status==='APPROVED'?'enrolled':'pending'}">${s.status||'—'}</span>`;
+    if (s.photo_base64) {
+      const img = document.getElementById('edit-avatar');
+      img.style.backgroundImage = `url(${s.photo_base64})`;
+      img.style.backgroundSize = 'cover';
+      img.style.backgroundPosition = 'center';
+      img.textContent = '';
+    }
+    // Load exams and pre-select enrolled ones
+    const enrolledIds = new Set((s.enrolled_exams || []).map(e => e.exam_id));
+    const examSel = document.getElementById('edit-exam-ids');
+    if (examSel) {
+      try {
+        const exams = await API.get('/exams/');
+        examSel.innerHTML = exams.map(e => {
+          const selected = enrolledIds.has(e.exam_id) ? ' selected' : '';
+          return `<option value="${e.exam_id}"${selected}>${escHtml(e.subject_name||'')} — ${e.date||''}</option>`;
+        }).join('');
+      } catch { examSel.innerHTML = ''; }
+    }
+    document.getElementById('modal-view').classList.add('hidden');
+    document.getElementById('modal-edit').classList.remove('hidden');
+  },
+
+  cancelEdit() {
+    document.getElementById('modal-view').classList.remove('hidden');
+    document.getElementById('modal-edit').classList.add('hidden');
+  },
+
+  async saveEdit() {
+    const btn = document.getElementById('modal-save-btn');
+    btn.classList.add('loading'); btn.disabled = true;
+    try {
+      const fd = new FormData();
+      fd.append('full_name', document.getElementById('edit-full-name').value);
+      fd.append('registration_no', document.getElementById('edit-reg-no').value);
+      fd.append('date_of_birth', document.getElementById('edit-dob').value);
+      fd.append('gender', document.getElementById('edit-gender').value);
+      fd.append('college_name', document.getElementById('edit-college').value);
+      fd.append('email', document.getElementById('edit-email').value);
+      fd.append('phone', document.getElementById('edit-phone').value);
+      fd.append('special_needs', document.getElementById('edit-special-needs').value === 'true');
+      fd.append('special_needs_notes', document.getElementById('edit-special-notes').value);
+      // Append exam_ids (always send — empty string means clear all)
+      const examSelect = document.getElementById('edit-exam-ids');
+      const selectedExamIds = Array.from(examSelect.selectedOptions).map(o => o.value);
+      if (selectedExamIds.length > 0) {
+        selectedExamIds.forEach(id => fd.append('exam_ids', id));
+      } else {
+        fd.append('exam_ids', ''); // send empty to clear all enrollments
+      }
+      const photoInput = document.getElementById('edit-photo-input');
+      if (photoInput.files && photoInput.files[0]) {
+        fd.append('photo', photoInput.files[0]);
+      }
+      await API.put(`/students/${this.modalStudentId}/`, fd);
+      Toast.show('Student details updated', 'success');
+      this.cancelEdit();
+      this.load(); // refresh the list
+      this._fetchDetail(this.modalStudentId); // refresh detail data
+    } catch (err) { Toast.show('Update failed: ' + err.message, 'error'); }
+    finally { btn.classList.remove('loading'); btn.disabled = false; }
+  },
+
   async deleteStudent(id) { if (!confirm(`Delete student #${id}?`)) return; try { await API.del(`/students/${id}/`); Toast.show('Deleted', 'success'); this.closeModal(); this.load(); } catch (err) { Toast.show('Delete failed: ' + err.message, 'error'); } },
 };
 
@@ -347,6 +553,8 @@ const Admin = {
    NEW: EXAM MANAGER
    ═══════════════════════════════════════════ */
 const ExamManager = {
+  _hallsData: [],
+
   init() {
     // Tabs
     document.querySelectorAll('#exams-tabs .tab-btn').forEach(btn => {
@@ -369,10 +577,29 @@ const ExamManager = {
     // Exam
     document.getElementById('exam-form').addEventListener('submit', e => { e.preventDefault(); this.saveExam(); });
     document.getElementById('exam-refresh-btn').addEventListener('click', () => this.loadExams());
+    // Filter halls when center changes
+    const centerSel = document.getElementById('exam-center');
+    if (centerSel) {
+      centerSel.addEventListener('change', () => this.filterHallsByCenter());
+    }
   },
   load() {
     // Populate dropdowns across pages
     this.loadSubjects();
+  },
+
+  filterHallsByCenter() {
+    const centerId = parseInt(document.getElementById('exam-center').value);
+    const hallSel = document.getElementById('exam-halls');
+    if (!hallSel) return;
+    if (!centerId) {
+      hallSel.innerHTML = '';
+      return;
+    }
+    hallSel.innerHTML = this._hallsData
+      .filter(h => h.center === centerId || h.center_id === centerId)
+      .map(h => `<option value="${h.hall_id}">${escHtml(h.name)}</option>`)
+      .join('');
   },
 
   /* ─── Subjects ─── */
@@ -432,11 +659,11 @@ const ExamManager = {
   async loadHalls() {
     try {
       const data = await API.get('/halls/');
+      this._hallsData = data;
       document.getElementById('halls-table-body').innerHTML = data.map(h => `<tr><td>${h.hall_id}</td><td>${escHtml(h.name)}</td><td>${escHtml(h.center_name||'')}</td><td>${h.rows}</td><td>${h.columns}</td><td>${h.total_capacity}</td><td><button class="action-btn" data-del-hall="${h.hall_id}">Delete</button></td></tr>`).join('');
       document.querySelectorAll('[data-del-hall]').forEach(btn => btn.addEventListener('click', () => this.delHall(btn.dataset.delHall)));
-      // Populate exam hall select
-      const sel = document.getElementById('exam-halls');
-      if (sel) { sel.innerHTML = data.map(h => `<option value="${h.hall_id}">${escHtml(h.center_name||'')} - ${escHtml(h.name)}</option>`).join(''); }
+      // Populate exam hall select based on current center selection
+      this.filterHallsByCenter();
     } catch (err) { Toast.show('Failed to load halls: ' + err.message, 'error'); }
   },
   async addHall() {
@@ -458,6 +685,12 @@ const ExamManager = {
       const centers = await API.get('/centers/');
       const centerSel = document.getElementById('exam-center');
       if (centerSel) { centerSel.innerHTML = '<option value="">— Select —</option>' + centers.map(c => `<option value="${c.center_id}">${escHtml(c.name)}</option>`).join(''); }
+      // Ensure halls data is loaded for the center-specific filter
+      if (this._hallsData.length === 0) {
+        await this.loadHalls();
+      } else {
+        this.filterHallsByCenter();
+      }
 
       const data = await API.get('/exams/');
       const tbody = document.getElementById('exams-table-body');
@@ -500,6 +733,7 @@ const SeatManager = {
   init() {
     document.getElementById('seats-generate-btn').addEventListener('click', () => this.generate());
     document.getElementById('seats-view-btn').addEventListener('click', () => this.view());
+    document.getElementById('seats-view-exam').addEventListener('change', () => this.loadHallsForView());
   },
   load() {
     // Populate exam selects
@@ -514,6 +748,19 @@ const SeatManager = {
       sel.innerHTML = '<option value="">— Select Exam —</option>' + exams.map(e => `<option value="${e.exam_id}">${escHtml(e.subject_name||'')} - ${e.date||''}</option>`).join('');
       if (val) sel.value = val;
     });
+  },
+  async loadHallsForView() {
+    const examId = parseInt(document.getElementById('seats-view-exam').value);
+    const hallSel = document.getElementById('seats-view-hall');
+    if (!examId) { hallSel.innerHTML = '<option value="">All Halls</option>'; return; }
+    try {
+      const exam = await API.get(`/exams/${examId}/`);
+      const halls = exam.halls_detail || [];
+      hallSel.innerHTML = '<option value="">All Halls</option>' +
+        halls.map(h => `<option value="${h.hall_id}">${escHtml(h.name)}</option>`).join('');
+    } catch {
+      hallSel.innerHTML = '<option value="">All Halls</option>';
+    }
   },
   async generate() {
     const exam_id = parseInt(document.getElementById('seats-exam-select').value);
@@ -530,6 +777,70 @@ const SeatManager = {
     } catch (err) { Toast.show('Error: ' + err.message, 'error'); }
     finally { btn.classList.remove('loading'); btn.disabled = false; }
   },
+  _renderHall(hall) {
+    const { name: hname, rows, columns, assignments } = hall;
+    const rowLabels = [];
+    for (let i = 0; i < rows; i++) rowLabels.push(String.fromCharCode(65 + i));
+    const takenSet = new Set(assignments.map(a => `${a.row},${a.col}`));
+    const colMid = Math.floor(columns / 2);
+    let taken = 0, free = 0;
+
+    // Build a lookup by (row,col) for quick access
+    const assignMap = {};
+    assignments.forEach(a => { assignMap[`${a.row},${a.col}`] = a; });
+
+    let html = `<div class="hall-layout" style="margin-bottom:24px"><div class="hall-layout-title">${escHtml(hname)}</div>`;
+    html += `<div class="room-box"><div class="board-row">`;
+    html += `<div class="door-wrap"><div class="door"><div class="door-arc"></div></div><span class="door-label">DOOR</span></div>`;
+    html += `<div class="board">BOARD / FRONT OF HALL</div></div>`;
+
+    // Column numbers
+    html += '<div class="col-nums">';
+    for (let c = 0; c < columns; c++) {
+      if (c === colMid) html += '<div class="col-num aisle-gap"></div>';
+      html += `<div class="col-num">${c + 1}</div>`;
+    }
+    html += '</div>';
+
+    // Seat rows
+    html += '<div class="rows">';
+    for (let r = 0; r < rows; r++) {
+      html += `<div class="seat-row"><div class="row-label">${rowLabels[r]}</div><div class="seats">`;
+      for (let c = 0; c < columns; c++) {
+        if (c === colMid) html += '<div class="aisle"></div>';
+        const key = `${r},${c}`;
+        const assn = assignMap[key] || null;
+        const isTaken = !!assn;
+        const state = isTaken ? 'taken' : 'free';
+        if (isTaken) taken++; else free++;
+        const seatLabel = escHtml(assn ? assn.seat_label : `${rowLabels[r]}${c + 1}`);
+        const regNo = assn ? escHtml(assn.registration_no) : '';
+        const sid = assn ? assn.student_id : '';
+        const sname = assn ? escHtml(assn.student_name) : '';
+        html += `<div class="seat ${state}" data-sid="${sid}" data-student="${sname}" data-reg="${regNo}" data-seat="${rowLabels[r]}${c + 1}">`;
+        if (isTaken) {
+          html += `<span class="seat-reg">${regNo}</span><span class="seat-num">${seatLabel}</span>`;
+        } else {
+          html += `<span class="seat-num seat-num-free">${seatLabel}</span>`;
+        }
+        html += `</div>`;
+      }
+      html += '</div></div>';
+    }
+    html += '</div>';
+
+    // Stats
+    html += `<div class="hall-stats"><span class="stat-pill stat-taken">${taken} Taken</span><span class="stat-pill stat-free">${free} Unoccupied</span></div>`;
+
+    // Legend
+    html += '<div class="legend">';
+    html += `<div class="legend-item"><div class="legend-dot" style="background:var(--taken)"></div>Taken</div>`;
+    html += `<div class="legend-item"><div class="legend-dot" style="background:var(--free)"></div>Unoccupied</div>`;
+    html += '</div></div></div>';
+
+    return html;
+  },
+
   async view() {
     const exam_id = parseInt(document.getElementById('seats-view-exam').value);
     if (!exam_id) { Toast.show('Select an exam', 'error'); return; }
@@ -537,20 +848,145 @@ const SeatManager = {
     try {
       const data = await API.get(`/exams/${exam_id}/seat-assignments/${hall_id ? `?hall_id=${hall_id}` : ''}`);
       const resultDiv = document.getElementById('seats-view-result'); resultDiv.classList.remove('hidden');
-      const asgns = data.assignments || [];
-      if (asgns.length === 0) { resultDiv.innerHTML = '<p style="color:var(--text-3)">No seat assignments found.</p>'; return; }
-      // Group by hall
-      const halls = {}; asgns.forEach(a => { const k = a.hall_name || 'Unknown'; if (!halls[k]) halls[k] = []; halls[k].push(a); });
-      let html = '<div style="font-size:.82rem;margin-bottom:12px">Total: <strong>' + asgns.length + '</strong> assignments</div>';
-      Object.entries(halls).forEach(([hname, hseats]) => {
-        html += `<div class="form-section-title" style="margin-top:12px">${escHtml(hname)}</div><div class="seat-grid-wrap"><div class="seat-grid" style="grid-template-columns:repeat(${Math.ceil(Math.sqrt(hseats.length))||4},64px)">`;
-        hseats.forEach(a => {
-          html += `<div class="seat-cell occupied"><div>${escHtml(a.student_name||'')}</div><div class="seat-label">${escHtml(a.seat_label||'')}</div></div>`;
-        });
-        html += '</div></div>';
-      });
+      const halls = data.halls || [];
+      if (halls.length === 0) { resultDiv.innerHTML = '<p style="color:var(--text-3)">No seat assignments found.</p>'; return; }
+
+      let html = `<div style="margin-bottom:12px;font-size:.82rem;color:var(--text-3)">${escHtml(data.subject)} — ${data.date} ${data.start_time}</div>`;
+      halls.forEach(h => { html += this._renderHall(h); });
       resultDiv.innerHTML = html;
+
+      // Click popup on taken seats
+      const popup = document.getElementById('seat-popup');
+      if (!popup) { const p = document.createElement('div'); p.id = 'seat-popup'; p.className = 'seat-popup hidden'; document.body.appendChild(p); }
+      resultDiv.querySelectorAll('.seat.taken').forEach(el => {
+        el.addEventListener('click', e => {
+          e.stopPropagation();
+          const pop = document.getElementById('seat-popup');
+          const sid = parseInt(el.dataset.sid);
+          const name = el.dataset.student;
+          const reg = el.dataset.reg;
+          const seat = el.dataset.seat;
+          pop.innerHTML = `<div class="seat-popup-header">
+            <div class="seat-popup-avatar">${(name||'?').split(' ').map(w=>w[0]).filter(Boolean).slice(0,2).join('').toUpperCase()}</div>
+            <div><div class="seat-popup-name">${escHtml(name)}</div><div class="seat-popup-reg">${escHtml(reg)}</div></div>
+          </div>
+          <div class="seat-popup-meta">Seat <strong>${seat}</strong></div>
+          <button class="btn btn-primary btn-full seat-popup-view">View Full Details</button>
+          <button class="btn btn-ghost btn-full seat-popup-close">Close</button>`;
+          // Position near click
+          let left = e.clientX + 12, top = e.clientY - 10;
+          if (left + 240 > window.innerWidth) left = e.clientX - 250;
+          if (top < 10) top = e.clientY + 10;
+          pop.style.left = left + 'px'; pop.style.top = top + 'px';
+          pop.classList.remove('hidden');
+          // View details
+          pop.querySelector('.seat-popup-view').addEventListener('click', () => {
+            pop.classList.add('hidden');
+            if (window.Students) window.Students.openModal({ student_id: sid });
+          });
+          pop.querySelector('.seat-popup-close').addEventListener('click', () => pop.classList.add('hidden'));
+        });
+      });
+      // Click elsewhere closes popup
+      document.addEventListener('click', e => {
+        const pop = document.getElementById('seat-popup');
+        if (pop && !pop.classList.contains('hidden') && !pop.contains(e.target) && !e.target.closest('.seat.taken')) {
+          pop.classList.add('hidden');
+        }
+      }, { once: false });
     } catch (err) { Toast.show('Error: ' + err.message, 'error'); }
+  },
+};
+
+/* ═══════════════════════════════════════════
+   EXAM SESSIONS
+   ═══════════════════════════════════════════ */
+const SessionsManager = {
+  init() {
+    document.getElementById('session-start-btn').addEventListener('click', () => this.startSession());
+    document.getElementById('session-history-btn').addEventListener('click', () => this.loadHistory());
+    document.getElementById('session-history-date').valueAsDate = new Date();
+  },
+  load() {
+    this.loadExams();
+    this.loadActive();
+  },
+  async loadExams() {
+    try {
+      const data = await API.get('/exams/');
+      const sel = document.getElementById('session-exam-select');
+      sel.innerHTML = '<option value="">— Select Exam —</option>' + (data || []).map(e =>
+        `<option value="${e.exam_id}">${escHtml(e.subject_name||'')} — ${e.date||''}</option>`
+      ).join('');
+    } catch { /* ignore */ }
+  },
+  async loadActive() {
+    try {
+      const data = await API.get('/exam-sessions/active/');
+      const card = document.getElementById('session-active-content');
+      const outer = document.getElementById('session-active-card');
+      if (!data.is_active || !data.session_id) {
+        card.innerHTML = '<p style="color:var(--text-3);font-size:.9rem">No active session</p>';
+        outer.style.borderLeftColor = 'var(--border)';
+        return;
+      }
+      outer.style.borderLeftColor = 'var(--success)';
+      card.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+          <div>
+            <div style="font-size:1.1rem;font-weight:700">${escHtml(data.subject_name||data.exam_name)}</div>
+            <div style="font-size:.85rem;color:var(--text-2);margin-top:4px">
+              Date: ${data.exam_date||'—'} &middot; Started by: ${escHtml(data.started_by||'—')} &middot;
+              Entries: <strong>${data.entry_count||0}</strong>
+            </div>
+          </div>
+          <button class="btn btn-danger-outline" id="session-end-btn">End Session</button>
+        </div>`;
+      document.getElementById('session-end-btn').addEventListener('click', () => this.endSession(data.session_id));
+    } catch { /* ignore */ }
+  },
+  async startSession() {
+    const exam_id = document.getElementById('session-exam-select').value;
+    const started_by = document.getElementById('session-started-by').value.trim();
+    if (!exam_id) { Toast.show('Select an exam', 'error'); return; }
+    if (!started_by) { Toast.show('Enter your name', 'error'); return; }
+    try {
+      const data = await API.post('/exam-sessions/start/', { exam_id: parseInt(exam_id), started_by });
+      Toast.show('Session started!', 'success');
+      this.loadActive();
+    } catch (err) { Toast.show('Error: ' + err.message, 'error'); }
+  },
+  async endSession(session_id) {
+    if (!confirm('End this active session?')) return;
+    try {
+      await API.post(`/exam-sessions/${session_id}/end/`);
+      Toast.show('Session ended', 'success');
+      this.loadActive();
+    } catch (err) { Toast.show('Error: ' + err.message, 'error'); }
+  },
+  async loadHistory() {
+    const date = document.getElementById('session-history-date').value;
+    try {
+      const qs = date ? `?date=${date}` : '';
+      const data = await API.get(`/exam-sessions/${qs}`);
+      const div = document.getElementById('session-history-result');
+      if (!data || data.length === 0) {
+        div.innerHTML = '<p style="color:var(--text-3);font-size:.85rem;margin-top:8px">No sessions found</p>';
+        return;
+      }
+      div.innerHTML = `<table class="data-table"><thead><tr>
+        <th>Exam</th><th>Date</th><th>Started By</th><th>Started</th><th>Ended</th><th>Status</th>
+      </tr></thead><tbody>
+        ${data.map(s => `<tr>
+          <td>${escHtml(s.subject_name||s.exam_name)}</td>
+          <td>${s.exam_date||'—'}</td>
+          <td>${escHtml(s.started_by||'—')}</td>
+          <td>${s.started_at ? new Date(s.started_at).toLocaleString() : '—'}</td>
+          <td>${s.ended_at ? new Date(s.ended_at).toLocaleString() : '—'}</td>
+          <td><span class="status-badge ${s.is_active ? 'granted' : ''}">${s.is_active ? 'Active' : 'Ended'}</span></td>
+        </tr>`).join('')}
+      </tbody></table>`;
+    } catch { Toast.show('Failed to load history', 'error'); }
   },
 };
 
@@ -707,6 +1143,7 @@ document.addEventListener('DOMContentLoaded', () => {
   Admin.init();
   ExamManager.init();
   SeatManager.init();
+  SessionsManager.init();
   ReportManager.init();
   initMobileSidebar();
 

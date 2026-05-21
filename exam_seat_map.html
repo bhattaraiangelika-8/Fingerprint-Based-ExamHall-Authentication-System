@@ -1,0 +1,134 @@
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@400;500;600&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --taken:#E24B4A;--taken-light:#FCEBEB;--taken-border:#A32D2D;
+    --reserved:#EF9F27;--reserved-light:#FAEEDA;--reserved-border:#854F0B;
+    --free:#639922;--free-light:#EAF3DE;--free-border:#3B6D11;
+    --desk:#D3D1C7;--room:#F1EFE8;--board-bg:#1D9E75;--door-bg:#B4B2A9;
+    --wall:#B4B2A9;--label:#444441;
+  }
+  body{font-family:'Sora',sans-serif;background:var(--room);padding:1.5rem 1rem 2rem;min-height:100vh}
+  .classroom{max-width:680px;margin:0 auto}
+  .room-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
+  .room-title{font-size:15px;font-weight:600;color:#2C2C2A;letter-spacing:.02em}
+  .stats{display:flex;gap:8px}
+  .stat-pill{font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px}
+  .stat-taken{background:var(--taken-light);color:var(--taken-border)}
+  .stat-reserved{background:var(--reserved-light);color:var(--reserved-border)}
+  .stat-free{background:var(--free-light);color:var(--free-border)}
+  .room-box{background:#fff;border-radius:16px;border:2px solid var(--wall);padding:1.25rem 1.25rem 1rem;position:relative}
+  .board-row{display:flex;align-items:center;gap:10px;margin-bottom:1.25rem}
+  .board{flex:1;background:var(--board-bg);border-radius:8px;padding:10px 0;text-align:center;font-family:'DM Mono',monospace;font-size:12px;font-weight:500;color:#fff;letter-spacing:.12em;border:2px solid #0F6E56;position:relative}
+  .board::before{content:'';position:absolute;bottom:-10px;left:50%;transform:translateX(-50%);width:40px;height:6px;background:#085041;border-radius:0 0 4px 4px}
+  .door-wrap{display:flex;flex-direction:column;align-items:center;gap:4px}
+  .door{width:40px;height:54px;background:var(--door-bg);border-radius:6px 6px 0 0;border:2px solid #888780;position:relative;overflow:hidden}
+  .door::after{content:'';position:absolute;top:8px;right:6px;width:5px;height:5px;background:#F1EFE8;border-radius:50%}
+  .door-arc{position:absolute;bottom:0;left:0;width:40px;height:22px;border-top:2px dashed #888780;border-radius:40px 40px 0 0;background:transparent}
+  .door-label{font-size:10px;color:var(--label);font-weight:500;letter-spacing:.06em}
+  .rows{display:flex;flex-direction:column;gap:10px}
+  .seat-row{display:flex;align-items:center;gap:8px}
+  .row-label{font-family:'DM Mono',monospace;font-size:11px;font-weight:500;color:#888780;width:18px;text-align:center;flex-shrink:0}
+  .seats{display:flex;gap:8px;flex:1}
+  .aisle{width:20px;flex-shrink:0}
+  .seat{width:48px;height:48px;border-radius:10px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:1.5px solid transparent;transition:transform .15s,box-shadow .15s;position:relative;flex-shrink:0}
+  .seat:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(0,0,0,.1)}
+  .seat-num{font-family:'DM Mono',monospace;font-size:10px;font-weight:500}
+  .seat-icon{font-size:18px;line-height:1}
+  .taken{background:var(--taken-light);border-color:var(--taken);color:var(--taken-border)}
+  .reserved{background:var(--reserved-light);border-color:var(--reserved);color:var(--reserved-border)}
+  .free{background:var(--free-light);border-color:var(--free);color:var(--free-border)}
+  .seat.taken::after{content:'';position:absolute;top:3px;right:3px;width:7px;height:7px;border-radius:50%;background:var(--taken)}
+  .seat.reserved::after{content:'';position:absolute;top:3px;right:3px;width:7px;height:7px;border-radius:50%;background:var(--reserved)}
+  .seat.free::after{content:'';position:absolute;top:3px;right:3px;width:7px;height:7px;border-radius:50%;background:var(--free)}
+  .legend{display:flex;gap:16px;justify-content:center;margin-top:1.25rem;padding-top:1rem;border-top:1px dashed #D3D1C7}
+  .legend-item{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500;color:#444441}
+  .legend-dot{width:10px;height:10px;border-radius:50%}
+  .tooltip{position:fixed;background:#2C2C2A;color:#fff;font-size:11px;font-family:'DM Mono',monospace;padding:5px 10px;border-radius:6px;pointer-events:none;opacity:0;transition:opacity .15s;z-index:100;white-space:nowrap}
+  .col-nums{display:flex;gap:8px;padding-left:26px;margin-bottom:4px}
+  .col-num{width:48px;text-align:center;font-family:'DM Mono',monospace;font-size:10px;color:#888780;flex-shrink:0}
+  .col-num.aisle-gap{width:20px}
+</style>
+<h2 class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)">Exam hall seat map showing taken, reserved, and unoccupied seats</h2>
+<div class="classroom">
+  <div class="room-header">
+    <div class="room-title">Exam Hall — Room 204</div>
+    <div class="stats">
+      <span class="stat-pill stat-taken" id="s-taken">0 Taken</span>
+      <span class="stat-pill stat-reserved" id="s-reserved">0 Reserved</span>
+      <span class="stat-pill stat-free" id="s-free">0 Free</span>
+    </div>
+  </div>
+  <div class="room-box">
+    <div class="board-row">
+      <div class="door-wrap">
+        <div class="door"><div class="door-arc"></div></div>
+        <span class="door-label">DOOR</span>
+      </div>
+      <div class="board">BOARD / FRONT OF HALL</div>
+    </div>
+    <div class="col-nums" id="col-nums"></div>
+    <div class="rows" id="seat-rows"></div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:var(--taken)"></div>Taken</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--reserved)"></div>Reserved</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--free)"></div>Unoccupied</div>
+    </div>
+  </div>
+</div>
+<div class="tooltip" id="tip"></div>
+<script>
+const ROWS=6,COLS=8,AISLE_AFTER=4;
+const rowLabels=['A','B','C','D','E','F'];
+const seatIcons={taken:'🪑',reserved:'🔒',free:'💺'};
+const forcedTaken=[[0,1],[0,3],[1,2],[1,5],[2,0],[2,6],[3,1],[3,4],[4,2],[4,7],[5,0],[5,3],[5,6]];
+const forcedReserved=[[0,5],[1,0],[2,3],[3,7],[4,1],[5,5]];
+const states=Array.from({length:ROWS},(_,r)=>Array.from({length:COLS},(_,c)=>{
+  if(forcedTaken.some(([fr,fc])=>fr===r&&fc===c))return'taken';
+  if(forcedReserved.some(([fr,fc])=>fr===r&&fc===c))return'reserved';
+  return'free';
+}));
+const tip=document.getElementById('tip');
+function renderColNums(){
+  const wrap=document.getElementById('col-nums');
+  wrap.innerHTML='';
+  for(let c=0;c<COLS;c++){
+    if(c===AISLE_AFTER){const sp=document.createElement('div');sp.className='col-num aisle-gap';wrap.appendChild(sp)}
+    const d=document.createElement('div');d.className='col-num';d.textContent=c+1;wrap.appendChild(d);
+  }
+}
+function renderSeats(){
+  const container=document.getElementById('seat-rows');
+  container.innerHTML='';
+  let taken=0,reserved=0,free=0;
+  for(let r=0;r<ROWS;r++){
+    const row=document.createElement('div');row.className='seat-row';
+    const rl=document.createElement('div');rl.className='row-label';rl.textContent=rowLabels[r];row.appendChild(rl);
+    const seats=document.createElement('div');seats.className='seats';
+    for(let c=0;c<COLS;c++){
+      if(c===AISLE_AFTER){const a=document.createElement('div');a.className='aisle';seats.appendChild(a)}
+      const s=states[r][c];
+      const seat=document.createElement('div');
+      seat.className=`seat ${s}`;
+      seat.innerHTML=`<span class="seat-icon">${seatIcons[s]}</span><span class="seat-num">${rowLabels[r]}${c+1}</span>`;
+      seat.addEventListener('mouseenter',e=>{
+        const label=s==='taken'?'Taken':s==='reserved'?'Reserved':'Unoccupied';
+        tip.textContent=`Seat ${rowLabels[r]}${c+1} — ${label}`;
+        tip.style.opacity='1';
+      });
+      seat.addEventListener('mousemove',e=>{tip.style.left=(e.clientX+12)+'px';tip.style.top=(e.clientY-28)+'px'});
+      seat.addEventListener('mouseleave',()=>tip.style.opacity='0');
+      if(s==='taken')taken++;else if(s==='reserved')reserved++;else free++;
+      seats.appendChild(seat);
+    }
+    row.appendChild(seats);
+    container.appendChild(row);
+  }
+  document.getElementById('s-taken').textContent=`${taken} Taken`;
+  document.getElementById('s-reserved').textContent=`${reserved} Reserved`;
+  document.getElementById('s-free').textContent=`${free} Unoccupied`;
+}
+renderColNums();
+renderSeats();
+</script>

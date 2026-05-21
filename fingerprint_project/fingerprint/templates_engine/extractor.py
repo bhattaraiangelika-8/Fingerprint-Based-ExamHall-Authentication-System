@@ -46,7 +46,7 @@ class FingerprintTemplate:
     """Container for a fingerprint biometric template."""
 
     def __init__(self, minutiae_list, singularities_list=None,
-                 width=512, height=512):
+                 width=400, height=500):
         self.minutiae = minutiae_list  # List[MinutiaePoint]
         self.singularities = singularities_list or []
         self.width = width
@@ -119,7 +119,7 @@ def extract_template(image, minutiae_data=None):
     Otherwise runs the full minutiae extraction pipeline.
 
     Args:
-        image: numpy array (grayscale, preprocessed, 512x512)
+        image: numpy array (grayscale, preprocessed, matching FINGERPRINT['NORMALIZED_SIZE'])
         minutiae_data: optional pre-computed dict from run_minutiae_pipeline
 
     Returns:

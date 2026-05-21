@@ -6,6 +6,7 @@ from . import views
 from . import views_registration as reg
 from . import views_exam as exam
 from . import views_reports as reports
+from . import views_sessions as sessions
 
 app_name = 'fingerprint'
 
@@ -24,6 +25,9 @@ urlpatterns = [
 
     # ── Existing Medical Forms ──
     path('medical-forms/', views.medical_form_upload, name='medical-form-upload'),
+
+    # ── Document Download ──
+    path('documents/<int:doc_id>/download/', views.document_download, name='document-download'),
 
     # ════════════════════════════════════════════
     # Phase 1: Student Registration Portal
@@ -77,4 +81,12 @@ urlpatterns = [
     path('analytics/hall-occupancy/', reports.hall_occupancy, name='hall-occupancy'),
     path('analytics/fallback-rate/', reports.fallback_rate_by_center, name='fallback-rate'),
     path('analytics/peak-entry-times/', reports.peak_entry_times, name='peak-entry-times'),
+
+    # ════════════════════════════════════════════
+    # Phase 4: Exam Sessions
+    # ════════════════════════════════════════════
+    path('exam-sessions/start/', sessions.start_session, name='session-start'),
+    path('exam-sessions/<int:session_id>/end/', sessions.end_session, name='session-end'),
+    path('exam-sessions/active/', sessions.active_session, name='session-active'),
+    path('exam-sessions/', sessions.list_sessions, name='session-list'),
 ]

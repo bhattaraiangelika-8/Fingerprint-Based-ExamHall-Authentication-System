@@ -272,15 +272,36 @@ def get_seat_assignments(request, exam_id):
         return Response({'error': 'Exam not found'}, status=status.HTTP_404_NOT_FOUND)
 
     hall_id = request.query_params.get('hall_id')
-    qs = SeatAssignment.objects.filter(exam=exam).select_related('student', 'hall', 'exam__subject')
+    halls_qs = exam.halls.all()
     if hall_id:
-        qs = qs.filter(hall_id=hall_id)
+        halls_qs = halls_qs.filter(hall_id=hall_id)
 
-    serializer = SeatAssignmentSerializer(qs, many=True)
+    hall_data = []
+    for hall in halls_qs:
+        assignments = SeatAssignment.objects.filter(exam=exam, hall=hall).select_related('student')
+        hall_data.append({
+            'hall_id': hall.hall_id,
+            'name': hall.name,
+            'rows': hall.rows,
+            'columns': hall.columns,
+            'total_capacity': hall.total_capacity,
+            'assignments': [
+                {
+                    'student_id': a.student_id,
+                    'student_name': a.student.full_name,
+                    'registration_no': a.student.registration_no,
+                    'row': a.row,
+                    'col': a.col,
+                    'seat_label': a.seat_label,
+                }
+                for a in assignments
+            ],
+        })
+
     return Response({
         'exam_id': exam_id,
         'subject': exam.subject.name,
         'date': exam.date,
         'start_time': exam.start_time,
-        'assignments': serializer.data,
+        'halls': hall_data,
     })

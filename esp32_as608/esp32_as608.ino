@@ -1,5 +1,8 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <ESP32Servo.h>
 
 // ============ CONFIG ============
 #define WIFI_SSID     "angelika"
@@ -12,6 +15,61 @@ String serverIP = "10.156.147.99";  // Change via serial: send "ip=192.168.1.50"
 #define AS608_TX      17
 #define TOUCH_PIN     4
 #define AS608_BAUD    57600
+
+// ============ ACTUATOR PINS ============
+#define RED_LED_PIN     13
+#define GREEN_LED_PIN   12
+#define SERVO_PIN       14
+#define DOOR_CLOSED      0
+#define DOOR_OPEN       90
+
+// ============ LCD CONFIG ============
+// 1602A with I2C module — default I2C address is 0x27 (some modules use 0x3F)
+// SDA -> GPIO21, SCL -> GPIO22 (ESP32 defaults)
+#define LCD_ADDR      0x27
+#define LCD_COLS      16
+#define LCD_ROWS      2
+
+LiquidCrystal_I2C lcd(LCD_ADDR, LCD_COLS, LCD_ROWS);
+Servo doorServo;
+
+// Helper: print up to 2 lines on the LCD, clearing first
+void lcdPrint(const char* line1, const char* line2 = "") {
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print(line1);
+    if (line2 && line2[0] != '\0') {
+        lcd.setCursor(0, 1);
+        lcd.print(line2);
+    }
+}
+
+// ============ ACTUATOR HELPERS ============
+
+void setIndicators(bool redOn, bool greenOn) {
+    digitalWrite(RED_LED_PIN, redOn ? HIGH : LOW);
+    digitalWrite(GREEN_LED_PIN, greenOn ? HIGH : LOW);
+}
+
+void doorOpen() {
+    doorServo.write(DOOR_OPEN);
+    Serial.println("Door OPENED");
+}
+
+void doorClose() {
+    doorServo.write(DOOR_CLOSED);
+    Serial.println("Door CLOSED");
+}
+
+bool parseVerified(String payload) {
+    int idx = payload.indexOf("\"validated\"");
+    if (idx < 0) return false;
+    int colon = payload.indexOf(':', idx);
+    if (colon < 0) return false;
+    String val = payload.substring(colon + 1);
+    val.trim();
+    return (val[0] == 't' || val[0] == 'T');
+}
 
 // ============ AS608 PROTOCOL ============
 
@@ -121,9 +179,13 @@ void IRAM_ATTR onTouch() {
 bool sendImageToServer() {
     if (WiFi.status() != WL_CONNECTED) {
         Serial.println("WiFi not connected, reconnecting...");
+        lcdPrint("WiFi lost...", "Reconnecting...");
         WiFi.reconnect();
         delay(3000);
-        if (WiFi.status() != WL_CONNECTED) return false;
+        if (WiFi.status() != WL_CONNECTED) {
+            lcdPrint("WiFi failed!", "Check network");
+            return false;
+        }
     }
 
     HTTPClient http;
@@ -132,6 +194,7 @@ bool sendImageToServer() {
     http.setTimeout(45000);  // 30s — backend needs ~7s for template extraction + matching
     http.addHeader("Content-Type", "application/octet-stream");
 
+    lcdPrint("Uploading...", "Please wait");
     int code = http.POST(imageBuffer, IMAGE_SIZE);
 
     if (code == 200) {
@@ -139,14 +202,39 @@ bool sendImageToServer() {
         Serial.println("=== Verification Result ===");
         Serial.println(payload);
         Serial.println("===========================");
+
+        // Parse a short result to show on LCD (first 16 chars of payload)
+        // Adjust this depending on your server's JSON response format
+        String display = payload;
+        display.trim();
+        // Strip quotes if it's a plain string response
+        display.replace("\"", "");
+        if (display.length() > 16) display = display.substring(0, 16);
+        lcdPrint("Result:", display.c_str());
+
+        bool verified = parseVerified(payload);
+        if (verified) {
+            setIndicators(false, true);
+            doorOpen();
+            lcdPrint("ACCESS GRANTED", "Welcome!");
+        } else {
+            setIndicators(true, false);
+            doorClose();
+            lcdPrint("ACCESS DENIED", "Try again");
+        }
+
         http.end();
-        return true;
+        return verified;
     } else {
         Serial.printf("Request failed, HTTP code: %d\n", code);
         if (code > 0) {
             String payload = http.getString();
             Serial.println(payload);
         }
+        String errMsg = "HTTP: " + String(code);
+        lcdPrint("Upload Failed!", errMsg.c_str());
+        setIndicators(true, false);
+        doorClose();
         http.end();
         return false;
     }
@@ -156,6 +244,14 @@ bool sendImageToServer() {
 
 void setup() {
     Serial.begin(115200);
+
+    // Init I2C LCD
+    Wire.begin();  // SDA=21, SCL=22 by default on ESP32
+    lcd.init();
+    lcd.backlight();
+    lcdPrint("AS608 System", "Starting...");
+    delay(1000);
+
     Serial.println("\n=== AS608 ESP32 Client ===");
 
     pinMode(TOUCH_PIN, INPUT);
@@ -163,16 +259,32 @@ void setup() {
 
     Serial2.begin(AS608_BAUD, SERIAL_8N1, AS608_RX, AS608_TX);
 
+    // Connect to WiFi
     WiFi.begin(WIFI_SSID, WIFI_PASS);
+    lcdPrint("Connecting WiFi", WIFI_SSID);
     Serial.print("Connecting to WiFi");
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
         Serial.print(".");
     }
-    Serial.printf("\nConnected! IP: %s\n", WiFi.localIP().toString().c_str());
+
+    String ip = WiFi.localIP().toString();
+    Serial.printf("\nConnected! IP: %s\n", ip.c_str());
     Serial.printf("Target server: http://%s:%d\n", serverIP.c_str(), SERVER_PORT);
     Serial.println("Commands: 'c'=capture  'ip=x.x.x.x'=set server IP");
+
+    lcdPrint("WiFi Connected!", ip.c_str());
+    delay(2000);
+
+    lcdPrint("Place Finger...", "Waiting...");
     Serial.println("Waiting for finger touch on GPIO4...");
+
+    pinMode(RED_LED_PIN, OUTPUT);
+    pinMode(GREEN_LED_PIN, OUTPUT);
+    setIndicators(false, false);
+    doorServo.attach(SERVO_PIN, 500, 2500);
+    doorClose();
+    delay(500);
 }
 
 void loop() {
@@ -181,20 +293,34 @@ void loop() {
         lastCaptureTime = millis();
 
         Serial.println("Touch detected! Capturing...");
+        lcdPrint("Touch detected!", "Capturing...");
 
         if (!captureFinger(true)) {
             Serial.println("Capture failed.");
+            lcdPrint("Capture Failed!", "Try again");
+            delay(2000);
+            lcdPrint("Place Finger...", "Waiting...");
             return;
         }
+
         Serial.println("Finger captured. Reading image...");
+        lcdPrint("Finger captured", "Reading image...");
 
         if (!readImageBuffer()) {
             Serial.println("Failed to read image buffer.");
+            lcdPrint("Image Read Fail", "Try again");
+            delay(2000);
+            lcdPrint("Place Finger...", "Waiting...");
             return;
         }
-        Serial.println("Image read complete. Uploading...");
 
+        Serial.println("Image read complete. Uploading...");
         sendImageToServer();
+
+        delay(5000);
+        setIndicators(false, false);
+        doorClose();
+        lcdPrint("Place Finger...", "Waiting...");
     }
 
     // Manual commands via serial
@@ -204,14 +330,23 @@ void loop() {
 
         if (cmd == "c") {
             Serial.println("Manual capture triggered.");
+            lcdPrint("Manual Capture", "Capturing...");
             if (captureFinger(true) && readImageBuffer()) {
                 sendImageToServer();
             } else {
                 Serial.println("Capture or read failed.");
+                lcdPrint("Capture Failed!", "Try again");
             }
+            delay(5000);
+            setIndicators(false, false);
+            doorClose();
+            lcdPrint("Place Finger...", "Waiting...");
         } else if (cmd.startsWith("ip=")) {
             serverIP = cmd.substring(3);
             Serial.printf("Server IP set to: %s\n", serverIP.c_str());
+            lcdPrint("Server IP set:", serverIP.c_str());
+            delay(2000);
+            lcdPrint("Place Finger...", "Waiting...");
         }
     }
 }

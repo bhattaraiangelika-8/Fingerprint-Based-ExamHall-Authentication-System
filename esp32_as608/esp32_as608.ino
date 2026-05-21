@@ -2,11 +2,11 @@
 #include <HTTPClient.h>
 
 // ============ CONFIG ============
-#define WIFI_SSID     "kamlesh02_2.4"
-#define WIFI_PASS     "CLB2774C69"
+#define WIFI_SSID     "angelika"
+#define WIFI_PASS     "12345678"
 #define SERVER_PORT   8000
 
-String serverIP = "192.168.1.71";  // Change via serial: send "ip=192.168.1.50"
+String serverIP = "10.156.147.99";  // Change via serial: send "ip=192.168.1.50"
 
 #define AS608_RX      16
 #define AS608_TX      17
